@@ -12,6 +12,7 @@ CC := clang
 LD := ld.lld
 QEMU := qemu-system-$(ARCH)
 CLANG_FORMAT ?= $(firstword $(wildcard /opt/homebrew/opt/llvm/bin/clang-format) clang-format)
+NM ?= $(firstword $(wildcard /opt/homebrew/opt/llvm/bin/llvm-nm) llvm-nm)
 
 TARGET := --target=aarch64-none-elf
 
@@ -85,9 +86,36 @@ define qemu_expect
 	fi
 endef
 
-# Expected panic line of each self-test. Kept in variables because a "(" inside $(call ...)
-# would be read as the start of another make function.
+# Boot an exception self-test kernel and require: the expected exception line, an ELR equal
+# to the address of the `selftest_fault` label in that kernel (proof that the trap frame holds
+# the real saved state), the register pattern REGS_<name> if one is set, the final panic, and
+# QEMU exiting by itself.
+# $(1) self-test name, $(2) test name.
+define qemu_expect_fault
+	kernel=build/selftest-$(1)/anvil.elf; \
+	addr=$$($(NM) $$kernel | awk '$$3 == "selftest_fault" { print $$1 }'); \
+	out=$$($(CHECK_TIMEOUT) $(QEMU) $(QEMU_FLAGS) -kernel $$kernel </dev/null 2>&1); status=$$?; \
+	out=$$(printf '%s\n' "$$out" | tr -d '\r'); \
+	if [ -n "$$addr" ] && [ $$status -eq 0 ] \
+	   && printf '%s\n' "$$out" | grep -q '$(EXPECT_$(1))' \
+	   && printf '%s\n' "$$out" | grep -q "ELR  $$addr" \
+	   && printf '%s\n' "$$out" | grep -q '$(REGS_$(1))' \
+	   && printf '%s\n' "$$out" | grep -q '^PANIC: unhandled exception$$'; then \
+	    echo "PASS  $(2)"; \
+	else \
+	    echo "FAIL  $(2) (exit $$status, selftest_fault at $$addr)"; printf '%s\n' "$$out"; exit 1; \
+	fi
+endef
+
+# Expected line of each self-test. Kept in variables because a "(" inside $(call ...) would be
+# read as the start of another make function.
 EXPECT_ASSERT := ^PANIC: assertion failed: answer == 5 (tests/kernel/selftest.c:[0-9]*)$$
+EXPECT_BRK := ^EXCEPTION: BRK (breakpoint instruction) (entry 4)$$
+EXPECT_UDF := ^EXCEPTION: unknown reason (undefined instruction?) (entry 4)$$
+EXPECT_UNALIGNED := ^EXCEPTION: data abort in kernel (entry 4)$$
+# The BRK self-test sets x9 = 0x1234 right before the fault.
+REGS_BRK := x9  0000000000001234
+FAULT_SELFTESTS := BRK UDF UNALIGNED
 
 # Milestone test: normal boot at EL1 and EL2 entry, then each self-test kernel.
 check: $(KERNEL)
@@ -95,6 +123,10 @@ check: $(KERNEL)
 	@$(call qemu_expect,virt$(comma)virtualization=on,$(KERNEL),^Anvil,boot at EL2)
 	@$(MAKE) --no-print-directory -s SELFTEST=ASSERT all
 	@$(call qemu_expect,virt,build/selftest-ASSERT/anvil.elf,$(EXPECT_ASSERT),KASSERT panics)
+	@for t in $(FAULT_SELFTESTS); do $(MAKE) --no-print-directory -s SELFTEST=$$t all || exit 1; done
+	@$(call qemu_expect_fault,BRK,brk is caught by the exception handler)
+	@$(call qemu_expect_fault,UDF,undefined instruction is caught)
+	@$(call qemu_expect_fault,UNALIGNED,unaligned load is caught as a data abort)
 
 # Host unit tests for pure logic: compiled for this Mac (not the kernel), with sanitizers that
 # abort on out-of-bounds memory access and undefined behavior.

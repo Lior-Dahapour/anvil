@@ -57,6 +57,13 @@ in_el1:
     msr     sctlr_el1, x0
     isb
 
+    /* Tell the CPU where the exception vector table is (VBAR_EL1, Arm ARM D24.2.213), as
+     * early as possible so that every later fault reaches exception_handler(). */
+    adrp    x0, exception_vectors
+    add     x0, x0, :lo12:exception_vectors
+    msr     vbar_el1, x0
+    isb
+
     /* Give C a stack. In EL1h, `sp` is SP_EL1. */
     adrp    x0, __stack_top
     add     x0, x0, :lo12:__stack_top
