@@ -76,15 +76,26 @@ check: $(KERNEL)
 	    fi; \
 	done
 
-# Host unit tests for pure logic. Milestone 1 has none yet.
-test:
-	@echo "no host tests yet"
+# Host unit tests for pure logic: compiled for this Mac (not the kernel), with sanitizers that
+# abort on out-of-bounds memory access and undefined behavior.
+HOST_CC := cc
+HOST_CFLAGS := -std=c11 -g -O1 -Wall -Wextra -Werror -Wshadow -Wconversion -Wsign-conversion \
+               -Wstrict-prototypes -Wmissing-prototypes -Wvla -Iinclude \
+               -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
+HOST_TESTS := $(BUILD)/host/format_test
+
+$(BUILD)/host/format_test: tests/format_test.c kernel/format.c include/anvil/format.h
+	@mkdir -p $(dir $@)
+	$(HOST_CC) $(HOST_CFLAGS) tests/format_test.c kernel/format.c -o $@
+
+test: $(HOST_TESTS)
+	@for t in $(HOST_TESTS); do $$t || exit 1; done
 
 format:
-	$(CLANG_FORMAT) -i $(C_SRCS) $(wildcard include/*/*.h arch/$(ARCH)/*.h)
+	$(CLANG_FORMAT) -i $(C_SRCS) $(wildcard tests/*.c include/*/*.h arch/$(ARCH)/*.h)
 
 format-check:
-	$(CLANG_FORMAT) --dry-run --Werror $(C_SRCS) $(wildcard include/*/*.h arch/$(ARCH)/*.h)
+	$(CLANG_FORMAT) --dry-run --Werror $(C_SRCS) $(wildcard tests/*.c include/*/*.h arch/$(ARCH)/*.h)
 
 clean:
 	rm -rf $(BUILD)

@@ -1,3 +1,4 @@
+#include <anvil/console.h>
 #include <anvil/kmain.h>
 #include <anvil/types.h>
 #include <arch/power.h>
@@ -12,7 +13,8 @@ _Noreturn void kmain(void)
     virt_addr_t uart = {.value = QEMU_VIRT_UART_BASE};
 
     pl011_init(uart);
-    pl011_puts("Anvil\n");
+    console_init(pl011_putc);
+    kprintf("Anvil\n");
 
     arch_poweroff();
 }

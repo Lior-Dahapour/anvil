@@ -41,19 +41,9 @@ void pl011_init(virt_addr_t base)
     mmio_write32(uart_base, UART_CR, CR_UARTEN | CR_TXE | CR_RXE);
 }
 
-static void pl011_putc(char c)
+void pl011_putc(char c)
 {
     while ((mmio_read32(uart_base, UART_FR) & FR_TXFF) != 0U) {
     }
     mmio_write32(uart_base, UART_DR, (uint32_t)(unsigned char)c);
-}
-
-void pl011_puts(const char *str)
-{
-    for (const char *p = str; *p != '\0'; p++) {
-        if (*p == '\n') {
-            pl011_putc('\r');
-        }
-        pl011_putc(*p);
-    }
 }

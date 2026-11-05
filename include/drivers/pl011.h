@@ -8,17 +8,17 @@
  *
  * @param base  Address of the UART's register block, mapped as Device memory.
  *
- * Context: early boot, single CPU. Must be called before pl011_puts().
+ * Context: early boot, single CPU. Must be called before pl011_putc().
  */
 void pl011_init(virt_addr_t base);
 
 /**
- * Send a NUL-terminated string. "\n" is sent as "\r\n" so terminals start a new line.
+ * Send one byte, waiting while the transmit FIFO is full. No newline translation.
  *
- * @param str  String to send. Must not be NULL.
+ * @param c  The byte to send.
  *
- * Context: early boot, single CPU (no locking yet).
+ * Context: single CPU (no locking yet). Must be called after pl011_init().
  */
-void pl011_puts(const char *str);
+void pl011_putc(char c);
 
 #endif
