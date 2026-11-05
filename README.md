@@ -23,7 +23,11 @@ brew install qemu lld
 ```sh
 make          # build build/anvil.elf
 make run      # boot it in QEMU; you should see "Anvil", then QEMU exits by itself
-make check    # automatic test: boots twice (CPU starting at EL1, then at EL2), PASS/FAIL
+make check    # automatic tests: normal boot at EL1 and EL2, plus crash self-tests, PASS/FAIL
+make test     # unit tests that run on the Mac (kprintf formatting)
+
+make run SELFTEST=BRK         # boot a kernel that crashes on purpose and see the register dump
+                              # (also UDF, UNALIGNED, ASSERT; see tests/kernel/selftest.c)
 make help     # all targets
 ```
 

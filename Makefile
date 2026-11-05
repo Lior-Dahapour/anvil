@@ -164,6 +164,8 @@ manuals:
 help:
 	@echo "make           build $(KERNEL)"
 	@echo "make run       boot it in QEMU (serial output in this terminal)"
+	@echo "make run SELFTEST=BRK|UDF|UNALIGNED|ASSERT"
+	@echo "               boot a crash-on-purpose kernel and see its exception dump / panic"
 	@echo "make run-el2   boot it with the CPU starting at EL2"
 	@echo "make debug     boot frozen, waiting for lldb on port 1234"
 	@echo "make check     automatic boot tests (EL1 and EL2 entry, panic self-tests)"
