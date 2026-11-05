@@ -28,13 +28,14 @@ void pl011_init(virt_addr_t base)
 
     /*
      * Programming order from the TRM, 3.3.8 (UARTCR): disable the UART, wait for the byte in
-     * flight to finish, then change the format, then enable again.
+     * flight to finish, flush the transmit FIFO (FEN = 0), then set the format, then enable.
      * The baud rate (IBRD/FBRD) is not set: it depends on the UART clock from the device tree,
      * and QEMU ignores it. TODO(dtb): set the baud rate from the "uartclk" clock.
      */
     mmio_write32(uart_base, UART_CR, 0U);
     while ((mmio_read32(uart_base, UART_FR) & FR_BUSY) != 0U) {
     }
+    mmio_write32(uart_base, UART_LCRH, 0U);
     mmio_write32(uart_base, UART_IMSC, 0U);
     mmio_write32(uart_base, UART_LCRH, LCRH_WLEN_8 | LCRH_FEN);
     mmio_write32(uart_base, UART_CR, CR_UARTEN | CR_TXE | CR_RXE);

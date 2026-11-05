@@ -47,7 +47,8 @@ SECTIONS
     }
 
     /* Boot stack. The AArch64 stack grows down, so SP starts at the top. 16-byte aligned
-     * because SP must always be 16-byte aligned (Arm ARM DDI 0487, D1.8.2 SP alignment). */
+     * because the calling convention requires SP mod 16 = 0 (AAPCS64 6.4.5.1), and the CPU
+     * can fault on a misaligned SP when SCTLR_EL1.SA is set (Arm ARM D1.4.10.2). */
     .stack (NOLOAD) : ALIGN(16) {
         . += KERNEL_STACK_SIZE;
         __stack_top = .;

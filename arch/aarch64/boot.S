@@ -7,14 +7,16 @@
  * `-M virt,virtualization=on` (and real hardware often starts at EL2).
  */
 
-/* SCTLR_EL1 (Arm ARM D19.2.118): MMU, caches and alignment checks off, little-endian.
- * 0x30d00800 sets only the RES1 bits (11, 20, 22, 23, 28, 29), which must be written as 1. */
+/* SCTLR_EL1 (Arm ARM D24.2.174): MMU, caches and alignment checks off, little-endian.
+ * 0x30d00800 sets only bits 11, 20, 22, 23, 28 and 29. On our Cortex-A72 (Armv8.0) they are
+ * RES1 (must be written as 1); on newer CPUs they are optional features (EOS, TSCXT, EIS, SPAN,
+ * nTLSMD, LSMAOE) whose value 1 keeps the Armv8.0 behaviour. Every other bit is 0 (off). */
 #define SCTLR_EL1_MMU_OFF 0x30d00800
 
-/* HCR_EL2.RW, bit 31 (Arm ARM D19.2.48): EL1 runs in 64-bit (AArch64) state. */
+/* HCR_EL2.RW, bit 31 (Arm ARM D24.2.61): EL1 runs in 64-bit (AArch64) state. */
 #define HCR_EL2_RW (1 << 31)
 
-/* SPSR_EL2 value for the eret into EL1 (Arm ARM C5.2.19): M[3:0] = 0b0101 is EL1h (EL1 using
+/* SPSR_EL2 value for the eret into EL1 (Arm ARM C5.2.22): M[3:0] = 0b0101 is EL1h (EL1 using
  * its own stack, SP_EL1), and bits 9..6 (D, A, I, F) set keep every interrupt type masked. */
 #define SPSR_EL1H_MASKED 0x3c5
 
@@ -24,7 +26,7 @@ _start:
     /* Mask debug, SError, IRQ and FIQ: we have no exception vectors until Milestone 2. */
     msr     daifset, #0xf
 
-    /* CurrentEL bits [3:2] hold the current exception level (Arm ARM C5.2.1). Kept in x19,
+    /* CurrentEL bits [3:2] hold the current exception level (Arm ARM C5.2.2). Kept in x19,
      * a callee-saved register, so it survives until we store it below. */
     mrs     x19, CurrentEL
     ubfx    x19, x19, #2, #2
