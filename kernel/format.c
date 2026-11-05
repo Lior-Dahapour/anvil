@@ -34,6 +34,15 @@ static void put_repeated(struct output *out, char c, size_t times)
     }
 }
 
+/* How one conversion should be laid out, from the flags, width and conversion character. */
+struct spec {
+    size_t width;      /* Minimum number of characters. */
+    char pad;          /* ' ' or '0' (the '0' flag). Ignored when `left` is set. */
+    bool left;         /* '-' flag: align left, pad with spaces on the right. */
+    unsigned int base; /* 10 or 16, for numbers. */
+    bool upper;        /* %X: upper-case hex digits. */
+};
+
 static void put_string(struct output *out, const char *str)
 {
     for (const char *p = str; *p != '\0'; p++) {
@@ -41,39 +50,68 @@ static void put_string(struct output *out, const char *str)
     }
 }
 
-/*
- * Print `magnitude` in `base`, with a '-' in front when `negative`. Zero padding goes between
- * the sign and the digits ("-0042"), space padding goes before the sign ("  -42").
- */
-static void put_number(struct output *out, uint64_t magnitude, bool negative, unsigned int base,
-                       bool upper, size_t width, char pad)
+static size_t string_length(const char *str)
 {
-    const char *digit_chars = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+    size_t length = 0;
+    while (str[length] != '\0') {
+        length++;
+    }
+    return length;
+}
+
+/* %s and %c: the text, padded with spaces to the width on the left or (with '-') right. */
+static void put_padded_string(struct output *out, const struct spec *spec, const char *str)
+{
+    size_t length = string_length(str);
+    size_t padding = spec->width > length ? spec->width - length : 0U;
+
+    if (!spec->left) {
+        put_repeated(out, ' ', padding);
+    }
+    put_string(out, str);
+    if (spec->left) {
+        put_repeated(out, ' ', padding);
+    }
+}
+
+/*
+ * Print `magnitude` in spec->base, with a '-' in front when `negative`. Zero padding goes
+ * between the sign and the digits ("-0042"), space padding before the sign ("  -42"), and with
+ * the '-' flag spaces go after the digits ("-42  ").
+ */
+static void put_number(struct output *out, const struct spec *spec, uint64_t magnitude,
+                       bool negative)
+{
+    const char *digit_chars = spec->upper ? "0123456789ABCDEF" : "0123456789abcdef";
     char digits[MAX_DIGITS];
     size_t count = 0;
 
     /* Digits come out lowest first, so they are stored reversed and printed backwards. */
     do {
-        digits[count] = digit_chars[magnitude % base];
+        digits[count] = digit_chars[magnitude % spec->base];
         count++;
-        magnitude /= base;
+        magnitude /= spec->base;
     } while (magnitude != 0U);
 
     size_t length = count + (negative ? 1U : 0U);
-    size_t padding = width > length ? width - length : 0U;
+    size_t padding = spec->width > length ? spec->width - length : 0U;
+    bool zero_pad = spec->pad == '0' && !spec->left;
 
-    if (pad == ' ') {
+    if (!spec->left && !zero_pad) {
         put_repeated(out, ' ', padding);
     }
     if (negative) {
         put_char(out, '-');
     }
-    if (pad == '0') {
+    if (zero_pad) {
         put_repeated(out, '0', padding);
     }
     while (count > 0U) {
         count--;
         put_char(out, digits[count]);
+    }
+    if (spec->left) {
+        put_repeated(out, ' ', padding);
     }
 }
 
@@ -127,17 +165,22 @@ size_t kformat(kformat_emit_fn emit, void *ctx, const char *fmt, va_list args)
         const char *spec_start = p;
         p++;
 
-        char pad = ' ';
-        if (*p == '0') {
-            pad = '0';
+        struct spec spec = {.width = 0, .pad = ' ', .left = false, .base = 10U, .upper = false};
+
+        /* Flags, in any order: '-' (align left) and '0' (zero padding). */
+        while (*p == '-' || *p == '0') {
+            if (*p == '-') {
+                spec.left = true;
+            } else {
+                spec.pad = '0';
+            }
             p++;
         }
 
-        size_t width = 0;
         while (*p >= '0' && *p <= '9') {
-            width = width * 10U + (size_t)(*p - '0');
-            if (width > MAX_WIDTH) {
-                width = MAX_WIDTH;
+            spec.width = spec.width * 10U + (size_t)(*p - '0');
+            if (spec.width > MAX_WIDTH) {
+                spec.width = MAX_WIDTH;
             }
             p++;
         }
@@ -162,26 +205,33 @@ size_t kformat(kformat_emit_fn emit, void *ctx, const char *fmt, va_list args)
             int64_t value = read_signed(&ap, length);
             /* Negate in unsigned arithmetic so INT64_MIN does not overflow. */
             uint64_t magnitude = value < 0 ? 0U - (uint64_t)value : (uint64_t)value;
-            put_number(&out, magnitude, value < 0, 10U, false, width, pad);
+            put_number(&out, &spec, magnitude, value < 0);
             break;
         }
         case 'u':
-            put_number(&out, read_unsigned(&ap, length), false, 10U, false, width, pad);
+            put_number(&out, &spec, read_unsigned(&ap, length), false);
             break;
         case 'x':
         case 'X':
-            put_number(&out, read_unsigned(&ap, length), false, 16U, conversion == 'X', width, pad);
+            spec.base = 16U;
+            spec.upper = conversion == 'X';
+            put_number(&out, &spec, read_unsigned(&ap, length), false);
             break;
-        case 'p':
+        case 'p': {
+            /* Always "0x" and 16 hex digits, whatever flags were given. */
+            struct spec pointer = {.width = 16U, .pad = '0', .left = false, .base = 16U};
             put_string(&out, "0x");
-            put_number(&out, (uint64_t)(uintptr_t)va_arg(ap, void *), false, 16U, false, 16U, '0');
+            put_number(&out, &pointer, (uint64_t)(uintptr_t)va_arg(ap, void *), false);
             break;
-        case 'c':
-            put_char(&out, (char)va_arg(ap, int));
+        }
+        case 'c': {
+            char text[2] = {(char)va_arg(ap, int), '\0'};
+            put_padded_string(&out, &spec, text);
             break;
+        }
         case 's': {
             const char *str = va_arg(ap, const char *);
-            put_string(&out, str != NULL ? str : "(null)");
+            put_padded_string(&out, &spec, str != NULL ? str : "(null)");
             break;
         }
         case '%':

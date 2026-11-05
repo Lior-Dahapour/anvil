@@ -101,6 +101,24 @@ int main(void)
     check("12345", "%3d", 12345);
     check("0000000009000000", "%016lx", 0x09000000UL);
 
+    /* '-' flag: align left, pad on the right. It wins over '0', as in printf. */
+    check("42   |", "%-5d|", 42);
+    check("-42  |", "%-5d|", -42);
+    check("x9 |", "x%-2zu|", (size_t)9);
+    check("x30|", "x%-2zu|", (size_t)30);
+    check_malformed("ff   |", "%-05x|", 255U);
+    check_malformed("ff   |", "%0-5x|", 255U);
+
+    /* Width for strings and characters. */
+    check("   ab|", "%5s|", "ab");
+    check("ab   |", "%-5s|", "ab");
+    check("toolong|", "%3s|", "toolong");
+    check("  A|", "%3c|", 'A');
+    check("A  |", "%-3c|", 'A');
+
+    /* Arguments after a flagged spec are still read in order (no shift). */
+    check("x1  00000000000000aa", "x%-2zu %016lx", (size_t)1, 0xaaUL);
+
     /* Pointers: always 0x + 16 digits. */
     check("0x0000000040200000", "%p", (void *)(uintptr_t)0x40200000U);
     check("0x0000000000000000", "%p", (void *)NULL);
