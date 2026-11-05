@@ -1,3 +1,4 @@
+#include <anvil/panic.h>
 #include <arch/mmio.h>
 #include <drivers/pl011.h>
 #include <stdint.h>
@@ -43,6 +44,8 @@ void pl011_init(virt_addr_t base)
 
 void pl011_putc(char c)
 {
+    KASSERT(uart_base.value != 0U);
+
     while ((mmio_read32(uart_base, UART_FR) & FR_TXFF) != 0U) {
     }
     mmio_write32(uart_base, UART_DR, (uint32_t)(unsigned char)c);

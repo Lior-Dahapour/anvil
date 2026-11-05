@@ -1,5 +1,6 @@
 #include <anvil/console.h>
 #include <anvil/format.h>
+#include <anvil/panic.h>
 #include <stdarg.h>
 #include <stddef.h>
 
@@ -8,6 +9,7 @@ static console_putc_fn console_out;
 
 void console_init(console_putc_fn putc)
 {
+    KASSERT(putc != NULL);
     console_out = putc;
 }
 
@@ -24,11 +26,16 @@ static void console_emit(char c, void *ctx)
     console_out(c);
 }
 
+void vkprintf(const char *fmt, va_list args)
+{
+    kformat(console_emit, NULL, fmt, args);
+}
+
 void kprintf(const char *fmt, ...)
 {
     va_list args;
 
     va_start(args, fmt);
-    kformat(console_emit, NULL, fmt, args);
+    vkprintf(fmt, args);
     va_end(args);
 }

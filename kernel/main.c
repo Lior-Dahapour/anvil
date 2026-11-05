@@ -1,5 +1,6 @@
 #include <anvil/console.h>
 #include <anvil/kmain.h>
+#include <anvil/selftest.h>
 #include <anvil/types.h>
 #include <arch/power.h>
 #include <drivers/pl011.h>
@@ -14,6 +15,11 @@ _Noreturn void kmain(void)
 
     pl011_init(uart);
     console_init(pl011_putc);
+
+#ifdef ANVIL_SELFTEST
+    selftest_run();
+#endif
+
     kprintf("Anvil\n");
 
     arch_poweroff();

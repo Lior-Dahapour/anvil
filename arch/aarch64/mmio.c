@@ -1,3 +1,4 @@
+#include <anvil/panic.h>
 #include <arch/mmio.h>
 
 /*
@@ -10,6 +11,8 @@
 
 uint32_t mmio_read32(virt_addr_t base, size_t offset)
 {
+    KASSERT((offset & 3U) == 0U);
+
     uint32_t value = 0;
     uintptr_t addr = (uintptr_t)(base.value + offset);
 
@@ -27,6 +30,8 @@ uint32_t mmio_read32(virt_addr_t base, size_t offset)
 
 void mmio_write32(virt_addr_t base, size_t offset, uint32_t value)
 {
+    KASSERT((offset & 3U) == 0U);
+
     uintptr_t addr = (uintptr_t)(base.value + offset);
 
     /*
