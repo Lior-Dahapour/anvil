@@ -28,7 +28,16 @@ QEMU_FLAGS := -M virt -cpu cortex-a72 -m 128M -nographic -no-reboot
 # Kill QEMU if the kernel hangs instead of powering off (macOS has no `timeout`).
 CHECK_TIMEOUT := perl -e 'alarm shift; exec @ARGV' 10
 
-.PHONY: all run run-el2 debug check test format format-check clean help
+# Reference manuals (see manuals/README.md). Downloaded, not committed: Arm's license does not
+# allow redistributing them.
+ARM_DOCS := https://documentation-service.arm.com/static
+MANUALS := \
+    manuals/DDI0487M_d_arm_architecture_reference_manual.pdf=$(ARM_DOCS)/6abbec2a6db85c5e6614a4a1 \
+    manuals/DDI0183G_pl011_uart_trm.pdf=$(ARM_DOCS)/5e8e36c2fd977155116a90b5 \
+    manuals/DEN0022F_b_psci.pdf=$(ARM_DOCS)/6703a8b8d7e4b739d817e10d \
+    manuals/aapcs64_2026Q3.pdf=https://github.com/ARM-software/abi-aa/releases/download/2026Q3/aapcs64.pdf
+
+.PHONY: all run run-el2 debug check test format format-check clean help manuals
 
 all: $(KERNEL)
 
@@ -80,6 +89,15 @@ format-check:
 clean:
 	rm -rf $(BUILD)
 
+# Download any manual that is missing. Existing files are left alone.
+manuals:
+	@for entry in $(MANUALS); do \
+	    file=$${entry%%=*}; url=$${entry#*=}; \
+	    if [ -f "$$file" ]; then echo "have     $$file"; continue; fi; \
+	    echo "download $$file"; \
+	    curl -fL --retry 2 -o "$$file.part" "$$url" && mv "$$file.part" "$$file" || exit 1; \
+	done
+
 help:
 	@echo "make           build $(KERNEL)"
 	@echo "make run       boot it in QEMU (serial output in this terminal)"
@@ -87,6 +105,7 @@ help:
 	@echo "make debug     boot frozen, waiting for lldb on port 1234"
 	@echo "make check     automatic boot test (EL1 and EL2 entry)"
 	@echo "make test      host unit tests"
+	@echo "make manuals   download the hardware manuals into manuals/"
 	@echo "make clean     delete build output"
 
 comma := ,

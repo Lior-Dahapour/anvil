@@ -53,6 +53,7 @@ arch/aarch64/   code that only makes sense on ARM (boot, power off, register acc
 include/        headers; include/arch/ is what every CPU architecture must provide
 kernel/         architecture-neutral kernel code
 drivers/        device drivers (the PL011 serial port)
+manuals/        hardware manuals (PDFs downloaded by `make manuals`) and what we use from each
 link.ld         where each part of the kernel goes in memory
 CLAUDE.md       coding rules for this repo
 ```
