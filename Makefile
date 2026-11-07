@@ -156,9 +156,12 @@ $(BUILD)/host/virt.dtb:
 	@mkdir -p $(dir $@)
 	$(QEMU) $(subst -M virt,-M virt$(comma)dumpdtb=$@,$(QEMU_FLAGS)) >/dev/null
 
+# Each test binary gets the same time limit as the QEMU tests, so a parser stuck in a loop
+# fails the run instead of hanging it.
 test: $(HOST_TESTS) $(BUILD)/host/virt.dtb
-	@$(BUILD)/host/format_test
-	@$(BUILD)/host/fdt_test $(BUILD)/host/virt.dtb
+	@$(CHECK_TIMEOUT) $(BUILD)/host/format_test
+	@$(CHECK_TIMEOUT) $(BUILD)/host/fdt_test $(BUILD)/host/virt.dtb || \
+	    { echo "fdt_test failed or timed out"; exit 1; }
 
 format:
 	$(CLANG_FORMAT) -i $(C_SRCS) $(wildcard tests/*.c tests/kernel/*.c tests/kernel/*.h include/*/*.h arch/$(ARCH)/*.h)

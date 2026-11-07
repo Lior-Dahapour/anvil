@@ -52,6 +52,25 @@ static void check_tree(const char *name, uint32_t magic, uint32_t totalsize, uin
     }
 }
 
+/* Arrange: a valid TREE_SIZE-byte header with the given strings block fields. Act and assert as
+ * in check_tree. */
+static void check_strings(const char *name, uint32_t strings_offset, uint32_t strings_size,
+                          kerr_t expected)
+{
+    uint8_t tree[TREE_SIZE] = {0};
+    put_be32(tree, 0, MAGIC);
+    put_be32(tree, 4, TREE_SIZE);
+    put_be32(tree, 8, HEADER_SIZE);
+    put_be32(tree, 12, strings_offset);
+    put_be32(tree, 32, strings_size);
+
+    kerr_t result = fdt_check_header(tree, TREE_SIZE);
+    if (result != expected) {
+        printf("FAIL  %s: expected %d, got %d\n", name, expected, result);
+        failures++;
+    }
+}
+
 /* Most cases only vary magic and totalsize: the token list starts right after the header. */
 static void check(const char *name, uint32_t magic, uint32_t totalsize, size_t len, kerr_t expected)
 {
@@ -90,8 +109,8 @@ static void check_tokens(const char *name, const uint32_t *tokens, size_t count,
     }
 }
 
-/* Arrange: a device tree file dumped by QEMU. Act: fdt_find_memory. Assert: the result. */
-static void check_file(const char *path, kerr_t expected)
+/* Arrange: a device tree file dumped by QEMU. Act: fdt_find_memory. Assert: the RAM range. */
+static void check_file(const char *path, uint64_t expected_base, uint64_t expected_size)
 {
     FILE *file = fopen(path, "rb");
     if (file == NULL) {
@@ -117,8 +136,78 @@ static void check_file(const char *path, kerr_t expected)
     kerr_t result = fdt_find_memory(blob, size, &base, &ram_size);
     free(blob);
 
-    if (result != expected) {
-        printf("FAIL  %s: expected %d, got %d\n", path, expected, result);
+    if (result != KERR_OK || base.value != expected_base || ram_size != expected_size) {
+        printf("FAIL  %s: expected RAM 0x%llx size 0x%llx, got %d, 0x%llx size 0x%llx\n", path,
+               (unsigned long long)expected_base, (unsigned long long)expected_size, result,
+               (unsigned long long)base.value, (unsigned long long)ram_size);
+        failures++;
+    }
+}
+
+/*
+ * Arrange: a tree with a root (#address-cells, #size-cells), a memory node with `reg`, and the
+ * strings block. Act: fdt_find_memory. Assert: result and RAM range. All numbers are cells.
+ */
+static void check_memory(const char *name, uint32_t address_cells, uint32_t size_cells,
+                         const uint32_t *reg, uint32_t reg_cells, kerr_t expected,
+                         uint64_t expected_base, uint64_t expected_size)
+{
+    /* Strings block: "#address-cells\0#size-cells\0reg\0" at offsets 0, 15, 27. */
+    static const char strings[] = "#address-cells\0#size-cells\0reg";
+    uint32_t words[64] = {0};
+    size_t n = 0;
+
+    words[n++] = 1; /* BEGIN_NODE "" (root) */
+    words[n++] = 0;
+    words[n++] = 3; /* PROP #address-cells */
+    words[n++] = 4;
+    words[n++] = 0;
+    words[n++] = address_cells;
+    words[n++] = 3; /* PROP #size-cells */
+    words[n++] = 4;
+    words[n++] = 15;
+    words[n++] = size_cells;
+    words[n++] = 1; /* BEGIN_NODE "memory" (6 letters + 0 + 1 padding = 2 words) */
+    words[n++] = 0x6d656d6fU;
+    words[n++] = 0x72790000U;
+    words[n++] = 3; /* PROP reg */
+    words[n++] = 4U * reg_cells;
+    words[n++] = 27;
+    for (uint32_t i = 0; i < reg_cells; i++) {
+        words[n++] = reg[i];
+    }
+    words[n++] = 2; /* END_NODE memory */
+    words[n++] = 2; /* END_NODE root */
+    words[n++] = 9; /* END */
+
+    size_t struct_size = 4U * n;
+    size_t size = HEADER_SIZE + struct_size + sizeof(strings);
+    uint8_t *blob = calloc(size, 1);
+    if (blob == NULL) {
+        printf("FAIL  %s: out of memory\n", name);
+        failures++;
+        return;
+    }
+    put_be32(blob, 0, MAGIC);
+    put_be32(blob, 4, (uint32_t)size);
+    put_be32(blob, 8, HEADER_SIZE);
+    put_be32(blob, 12, (uint32_t)(HEADER_SIZE + struct_size));
+    put_be32(blob, 32, (uint32_t)sizeof(strings));
+    for (size_t i = 0; i < n; i++) {
+        put_be32(blob, HEADER_SIZE + 4U * i, words[i]);
+    }
+    memcpy(blob + HEADER_SIZE + struct_size, strings, sizeof(strings));
+
+    phys_addr_t base = {.value = 0};
+    uint64_t ram_size = 0;
+    kerr_t result = fdt_find_memory(blob, size, &base, &ram_size);
+    free(blob);
+
+    if (result != expected ||
+        (expected == KERR_OK && (base.value != expected_base || ram_size != expected_size))) {
+        printf("FAIL  %s: expected %d 0x%llx/0x%llx, got %d 0x%llx/0x%llx\n", name, expected,
+               (unsigned long long)expected_base, (unsigned long long)expected_size, result,
+               (unsigned long long)base.value, (unsigned long long)ram_size);
         failures++;
     }
 }
@@ -157,10 +246,22 @@ int main(int argc, char **argv)
     check_tree("struct offset at totalsize", MAGIC, TREE_SIZE, TREE_SIZE, TREE_SIZE, KERR_INVALID);
     check_tree("struct offset max", MAGIC, TREE_SIZE, 0xffffffffU, TREE_SIZE, KERR_INVALID);
 
+    /* Strings block: must fit inside the tree, and may be empty, even right at the end. */
+    check_strings("strings fill the rest", HEADER_SIZE, TREE_SIZE - HEADER_SIZE, KERR_OK);
+    check_strings("empty strings at the end", TREE_SIZE, 0, KERR_OK);
+    check_strings("strings one byte too long", HEADER_SIZE, TREE_SIZE - HEADER_SIZE + 1U,
+                  KERR_INVALID);
+    check_strings("strings start past the end", TREE_SIZE + 1U, 0, KERR_INVALID);
+    /* Only correct thanks to the `||` order: totalsize - offset would wrap to a huge number. */
+    check_strings("huge offset, huge size", 0xfffffff0U, 0xfffffff0U, KERR_INVALID);
+
     /* Walking the token list. No memory node anywhere, so a valid walk ends in NOT_FOUND. */
     check_tokens("only END", (const uint32_t[]){9}, 1, KERR_NOT_FOUND);
     check_tokens("NOPs then END", (const uint32_t[]){4, 4, 9}, 3, KERR_NOT_FOUND);
-    check_tokens("END_NODE then END", (const uint32_t[]){2, 9}, 2, KERR_NOT_FOUND);
+    /* Depth: every END_NODE must close a node that BEGIN_NODE opened. */
+    check_tokens("END_NODE without a node", (const uint32_t[]){2, 9}, 2, KERR_INVALID);
+    check_tokens("node never closed", (const uint32_t[]){1, 0, 9}, 3, KERR_INVALID);
+    check_tokens("one END_NODE too many", (const uint32_t[]){1, 0, 2, 2, 9}, 5, KERR_INVALID);
     check_tokens("unknown token 5", (const uint32_t[]){5, 9}, 2, KERR_INVALID);
     /* No END: the walk must stop at the end of the tree instead of reading past it. */
     check_tokens("tree ends without END", (const uint32_t[]){4, 4}, 2, KERR_INVALID);
@@ -196,10 +297,26 @@ int main(int argc, char **argv)
                  7, KERR_INVALID);
     check_tokens("PROP cut off after len", (const uint32_t[]){1, 0, 3, 4}, 4, KERR_INVALID);
 
-    /* QEMU's real device tree, dumped by `make test`. The walk must reach END; finding the
-     * memory node comes next. */
+    /* Reading reg. Cell counts differ on purpose: equal counts hide mixed-up variables. */
+    check_memory("2+2 cells (QEMU layout)", 2, 2,
+                 (const uint32_t[]){0, 0x40000000U, 0, 0x08000000U}, 4, KERR_OK, 0x40000000U,
+                 0x08000000U);
+    check_memory("2+1 cells (spec default size)", 2, 1, (const uint32_t[]){0x1U, 0x0U, 0x20000000U},
+                 3, KERR_OK, 0x100000000ULL, 0x20000000U);
+    check_memory("1+2 cells", 1, 2, (const uint32_t[]){0x80000000U, 0x2U, 0x0U}, 3, KERR_OK,
+                 0x80000000U, 0x200000000ULL);
+    check_memory("1+1 cells", 1, 1, (const uint32_t[]){0x40000000U, 0x10000000U}, 2, KERR_OK,
+                 0x40000000U, 0x10000000U);
+    check_memory("high half not zero", 2, 2, (const uint32_t[]){0x12U, 0x34000000U, 0x0U, 0x1000U},
+                 4, KERR_OK, 0x1234000000ULL, 0x1000U);
+    check_memory("reg too short", 2, 2, (const uint32_t[]){0, 0x40000000U, 0}, 3, KERR_INVALID, 0,
+                 0);
+    check_memory("3 address cells", 3, 2, (const uint32_t[]){0, 0, 0, 0, 0}, 5, KERR_INVALID, 0, 0);
+    check_memory("0 size cells", 2, 0, (const uint32_t[]){0, 0}, 2, KERR_INVALID, 0, 0);
+
+    /* QEMU's real device tree, dumped by `make test` (-m 128M): RAM at 1 GiB, 128 MiB. */
     if (argc > 1) {
-        check_file(argv[1], KERR_NOT_FOUND);
+        check_file(argv[1], 0x40000000U, 128U * 1024U * 1024U);
     }
 
     if (failures != 0) {
