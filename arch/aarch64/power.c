@@ -3,9 +3,6 @@
 #include <arch/power.h>
 #include <stdint.h>
 
-/* Defined here, written by boot.S. Zero until boot.S stores the real value. */
-uint64_t arch_boot_el;
-
 /* PSCI SYSTEM_OFF function ID, SMC32 calling convention (Arm PSCI spec DEN0022, 5.1.9). */
 #define PSCI_SYSTEM_OFF 0x84000008U
 

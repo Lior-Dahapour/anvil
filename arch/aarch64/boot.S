@@ -23,6 +23,26 @@
     .section .text.boot, "ax"
     .global _start
 _start:
+    /* 64-byte arm64 Image header, so a bootloader (QEMU, U-Boot) recognises the raw kernel
+     * image and passes the device tree address in x0 (Linux Documentation/arch/arm64/
+     * booting.rst, section 4 "Call the kernel image"). The CPU executes the first word, so
+     * code0 jumps over the header. */
+    b       boot_entry          /* code0 */
+    .long   0                   /* code1 */
+    .quad   0                   /* text_offset: load at a 2 MiB-aligned base + 0 */
+    .quad   __image_size        /* image_size: bytes needed incl. .bss and stack (link.ld) */
+    .quad   0xa                 /* flags: little-endian, 4 KiB pages, any 2 MiB base */
+    .quad   0                   /* res2 */
+    .quad   0                   /* res3 */
+    .quad   0                   /* res4 */
+    .long   0x644d5241          /* magic: "ARM\x64" */
+    .long   0                   /* res5: PE header offset, only for EFI boot */
+
+boot_entry:
+    /* x0 = physical address of the device tree, from the bootloader. Keep it in x20 (not
+     * used anywhere else in this file) because x0 is reused as scratch below. */
+    mov     x20, x0
+
     /* Mask debug, SError, IRQ and FIQ: we have no exception vectors until Milestone 2. */
     msr     daifset, #0xf
 
@@ -83,6 +103,8 @@ in_el1:
     /* Only now, after .bss is zeroed, record the level we were entered at. */
     adrp    x0, arch_boot_el
     str     x19, [x0, :lo12:arch_boot_el]
+    adrp    x0, arch_boot_dtb
+    str     x20, [x0, :lo12:arch_boot_dtb]
 
     bl      kmain
 

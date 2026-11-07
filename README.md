@@ -21,7 +21,7 @@ brew install qemu lld
 ## Build and run
 
 ```sh
-make          # build build/anvil.elf
+make          # build build/anvil.bin (and build/anvil.elf, for the debugger)
 make run      # boot it in QEMU; you should see "Anvil", then QEMU exits by itself
 make check    # automatic tests: normal boot at EL1 and EL2, plus crash self-tests, PASS/FAIL
 make test     # unit tests that run on the Mac (kprintf formatting)
@@ -37,10 +37,13 @@ If the kernel ever hangs inside `make run`, quit QEMU with `Ctrl-A` then `X`.
 
 1. **QEMU starts.** It pretends to be an ARM computer called `virt` with 128 MiB of RAM at
    address `0x40000000` and a serial port (a PL011 UART) at `0x09000000`.
-2. **QEMU loads `build/anvil.elf`** into RAM at `0x40200000`. That address comes from
-   `link.ld`, the linker script.
+2. **QEMU loads `build/anvil.bin`** into RAM at `0x40200000`. This is a raw kernel image: the
+   ELF file stripped down to plain bytes, starting with a 64-byte header that tells QEMU "this
+   is an ARM64 kernel". For this format QEMU also copies the device tree (a description of
+   the machine: RAM, devices) into RAM and passes its address in register `x0`.
 3. **The CPU starts at `_start` in `arch/aarch64/boot.S`.** At this point nothing is set up:
    no stack, and C code cannot run yet. This assembly code:
+   - jumps over the image header and saves the device tree address from `x0`;
    - turns interrupts off, because we can't handle them yet;
    - checks the privilege level (the "exception level"), and if the CPU started at EL2
      (hypervisor level), drops down to EL1, the level where kernels run;

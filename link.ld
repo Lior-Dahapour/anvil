@@ -54,6 +54,11 @@ SECTIONS
         __stack_top = .;
     }
 
+    /* Everything the kernel occupies in memory, from _start to the end of the stack. Goes
+     * into the image header (boot.S) so the bootloader keeps this whole range free. */
+    __image_end = .;
+    __image_size = __image_end - KERNEL_BASE;
+
     /DISCARD/ : {
         *(.comment)
         *(.note .note.*)

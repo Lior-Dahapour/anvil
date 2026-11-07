@@ -7,12 +7,16 @@ ARCH ?= aarch64
 SELFTEST ?=
 BUILD := build$(if $(SELFTEST),/selftest-$(SELFTEST))
 KERNEL := $(BUILD)/anvil.elf
+# Raw image (ELF stripped to plain bytes) that QEMU boots: only for this format does it pass the
+# device tree address in x0. The ELF stays for lldb, which needs its symbols.
+IMAGE := $(BUILD)/anvil.bin
 
 CC := clang
 LD := ld.lld
 QEMU := qemu-system-$(ARCH)
 CLANG_FORMAT ?= $(firstword $(wildcard /opt/homebrew/opt/llvm/bin/clang-format) clang-format)
 NM ?= $(firstword $(wildcard /opt/homebrew/opt/llvm/bin/llvm-nm) llvm-nm)
+OBJCOPY ?= $(firstword $(wildcard /opt/homebrew/opt/llvm/bin/llvm-objcopy) llvm-objcopy)
 
 TARGET := --target=aarch64-none-elf
 
@@ -48,10 +52,13 @@ MANUALS := \
 
 .PHONY: all run run-el2 debug check test format format-check clean help manuals
 
-all: $(KERNEL)
+all: $(IMAGE)
 
 $(KERNEL): $(OBJS) link.ld
 	$(LD) $(LDFLAGS) -o $@ $(OBJS)
+
+$(IMAGE): $(KERNEL)
+	$(OBJCOPY) -O binary $< $@
 
 $(BUILD)/%.c.o: %.c
 	@mkdir -p $(dir $@)
@@ -61,17 +68,17 @@ $(BUILD)/%.S.o: %.S
 	@mkdir -p $(dir $@)
 	$(CC) $(ASFLAGS) -c $< -o $@
 
-run: $(KERNEL)
-	$(QEMU) $(QEMU_FLAGS) -kernel $(KERNEL)
+run: $(IMAGE)
+	$(QEMU) $(QEMU_FLAGS) -kernel $(IMAGE)
 
 # Same, but QEMU starts the CPU at EL2 (like real hardware), to exercise the EL2 -> EL1 drop.
-run-el2: $(KERNEL)
-	$(QEMU) $(subst -M virt,-M virt$(comma)virtualization=on,$(QEMU_FLAGS)) -kernel $(KERNEL)
+run-el2: $(IMAGE)
+	$(QEMU) $(subst -M virt,-M virt$(comma)virtualization=on,$(QEMU_FLAGS)) -kernel $(IMAGE)
 
 # Freeze the CPU at the first instruction and wait for a debugger on port 1234.
-debug: $(KERNEL)
+debug: $(IMAGE)
 	@echo "In another terminal: lldb $(KERNEL) -o 'gdb-remote 1234'"
-	$(QEMU) $(QEMU_FLAGS) -kernel $(KERNEL) -s -S
+	$(QEMU) $(QEMU_FLAGS) -kernel $(IMAGE) -s -S
 
 # Boot one kernel and require that QEMU exits by itself (exit 0, the kernel powered off) and
 # that the serial output contains a line matching a pattern.
@@ -94,7 +101,7 @@ endef
 define qemu_expect_fault
 	kernel=build/selftest-$(1)/anvil.elf; \
 	addr=$$($(NM) $$kernel | awk '$$3 == "selftest_fault" { print $$1 }'); \
-	out=$$($(CHECK_TIMEOUT) $(QEMU) $(QEMU_FLAGS) -kernel $$kernel </dev/null 2>&1); status=$$?; \
+	out=$$($(CHECK_TIMEOUT) $(QEMU) $(QEMU_FLAGS) -kernel build/selftest-$(1)/anvil.bin </dev/null 2>&1); status=$$?; \
 	out=$$(printf '%s\n' "$$out" | tr -d '\r'); \
 	if [ -n "$$addr" ] && [ $$status -eq 0 ] \
 	   && printf '%s\n' "$$out" | grep -q '$(EXPECT_$(1))' \
@@ -118,11 +125,11 @@ REGS_BRK := x9  0000000000001234
 FAULT_SELFTESTS := BRK UDF UNALIGNED
 
 # Milestone test: normal boot at EL1 and EL2 entry, then each self-test kernel.
-check: $(KERNEL)
-	@$(call qemu_expect,virt,$(KERNEL),^Anvil,boot at EL1)
-	@$(call qemu_expect,virt$(comma)virtualization=on,$(KERNEL),^Anvil,boot at EL2)
+check: $(IMAGE)
+	@$(call qemu_expect,virt,$(IMAGE),^Anvil,boot at EL1)
+	@$(call qemu_expect,virt$(comma)virtualization=on,$(IMAGE),^Anvil,boot at EL2)
 	@$(MAKE) --no-print-directory -s SELFTEST=ASSERT all
-	@$(call qemu_expect,virt,build/selftest-ASSERT/anvil.elf,$(EXPECT_ASSERT),KASSERT panics)
+	@$(call qemu_expect,virt,build/selftest-ASSERT/anvil.bin,$(EXPECT_ASSERT),KASSERT panics)
 	@for t in $(FAULT_SELFTESTS); do $(MAKE) --no-print-directory -s SELFTEST=$$t all || exit 1; done
 	@$(call qemu_expect_fault,BRK,brk is caught by the exception handler)
 	@$(call qemu_expect_fault,UDF,undefined instruction is caught)
@@ -162,7 +169,7 @@ manuals:
 	done
 
 help:
-	@echo "make           build $(KERNEL)"
+	@echo "make           build $(IMAGE) (and $(KERNEL) for lldb)"
 	@echo "make run       boot it in QEMU (serial output in this terminal)"
 	@echo "make run SELFTEST=BRK|UDF|UNALIGNED|ASSERT"
 	@echo "               boot a crash-on-purpose kernel and see its exception dump / panic"

@@ -25,7 +25,7 @@ and checkable.
 
 - C11, freestanding, no libc. Compiler: clang with `--target=aarch64-none-elf` and `ld.lld`, or a
   `aarch64-none-elf` cross gcc. Build with `make`.
-- Run and test: `qemu-system-aarch64 -M virt -cpu cortex-a72 -nographic -kernel build/anvil.elf`
+- Run and test: `qemu-system-aarch64 -M virt -cpu cortex-a72 -nographic -kernel build/anvil.bin`
   (add `-s -S` and use `gdb-multiarch` for debugging).
 - Required flags:
   `-std=c11 -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mgeneral-regs-only
