@@ -124,9 +124,13 @@ EXPECT_UNALIGNED := ^EXCEPTION: data abort in kernel (entry 4)$$
 REGS_BRK := x9  0000000000001234
 FAULT_SELFTESTS := BRK UDF UNALIGNED
 
+# The RAM line the kernel prints from the device tree: QEMU_FLAGS gives 128 MiB at 1 GiB.
+EXPECT_RAM := ^RAM: 0x40000000 - 0x48000000 (128 MiB)$$
+
 # Milestone test: normal boot at EL1 and EL2 entry, then each self-test kernel.
 check: $(IMAGE)
 	@$(call qemu_expect,virt,$(IMAGE),^Anvil,boot at EL1)
+	@$(call qemu_expect,virt,$(IMAGE),$(EXPECT_RAM),RAM found in the device tree)
 	@$(call qemu_expect,virt$(comma)virtualization=on,$(IMAGE),^Anvil,boot at EL2)
 	@$(MAKE) --no-print-directory -s SELFTEST=ASSERT all
 	@$(call qemu_expect,virt,build/selftest-ASSERT/anvil.bin,$(EXPECT_ASSERT),KASSERT panics)
