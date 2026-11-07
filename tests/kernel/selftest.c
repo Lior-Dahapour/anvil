@@ -7,8 +7,9 @@
  * `make check` looks that label up in the built kernel and requires the dump's ELR to equal
  * it, which proves the trap frame holds the real saved state.
  */
+#include "selftest.h"
+
 #include <anvil/panic.h>
-#include <anvil/selftest.h>
 #include <stdint.h>
 
 #if defined(ANVIL_SELFTEST_ASSERT)

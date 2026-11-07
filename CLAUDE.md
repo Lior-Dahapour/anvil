@@ -157,6 +157,16 @@ Bad (rejected in review):
 return *ptr;
 ```
 
+### Functions that trust their caller: `_unchecked`
+
+A function that does not validate its input, and is only correct if the caller upholds a
+precondition it cannot check itself, gets the suffix `_unchecked` (Rust's convention, for
+example `read_be32_unchecked`). Its doc comment has a `Safety:` line stating exactly what the
+caller must guarantee, and every call site has a `SAFETY:` comment saying why that holds there.
+A function that validates its own input keeps a plain name. The hardware access helpers
+(`mmio_*`, `read_sysreg`, barriers) are exempt: their contract is documented once in their
+header, see "Hardware access helpers".
+
 ### Pair with a runtime check when it is cheap
 
 If a SAFETY claim can be checked in O(1) (non-null, alignment, range, lock held, interrupts

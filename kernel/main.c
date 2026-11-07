@@ -1,9 +1,12 @@
 #include <anvil/console.h>
 #include <anvil/kmain.h>
-#include <anvil/selftest.h>
 #include <anvil/types.h>
 #include <arch/power.h>
 #include <drivers/pl011.h>
+
+#ifdef ANVIL_SELFTEST
+#include <selftest.h>
+#endif
 
 /* QEMU `virt` PL011 UART. TODO(dtb): take this from the device tree's /chosen stdout-path. */
 #define QEMU_VIRT_UART_BASE 0x09000000U
