@@ -151,8 +151,14 @@ $(BUILD)/host/fdt_test: tests/fdt_test.c kernel/fdt.c include/anvil/fdt.h includ
 	@mkdir -p $(dir $@)
 	$(HOST_CC) $(HOST_CFLAGS) tests/fdt_test.c kernel/fdt.c -o $@
 
-test: $(HOST_TESTS)
-	@for t in $(HOST_TESTS); do $$t || exit 1; done
+# QEMU's own device tree for the machine we boot, so the parser is tested on the real thing.
+$(BUILD)/host/virt.dtb:
+	@mkdir -p $(dir $@)
+	$(QEMU) $(subst -M virt,-M virt$(comma)dumpdtb=$@,$(QEMU_FLAGS)) >/dev/null
+
+test: $(HOST_TESTS) $(BUILD)/host/virt.dtb
+	@$(BUILD)/host/format_test
+	@$(BUILD)/host/fdt_test $(BUILD)/host/virt.dtb
 
 format:
 	$(CLANG_FORMAT) -i $(C_SRCS) $(wildcard tests/*.c tests/kernel/*.c tests/kernel/*.h include/*/*.h arch/$(ARCH)/*.h)
