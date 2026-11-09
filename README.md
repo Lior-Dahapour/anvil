@@ -1,73 +1,61 @@
 # Anvil
 
-A hobby operating system kernel in C, built step by step to learn how computers work at the
-lowest level. The first target is 64-bit ARM (AArch64) running in the QEMU emulator.
+A small operating system kernel for 64-bit ARM (AArch64), written in C11 and assembly. It runs
+on the QEMU `virt` machine. An x86_64 port is planned.
 
-Current state: **Milestone 1**. The kernel boots, prints `Anvil` over the serial port, and
-powers the machine off.
+## Status
 
-## What you need
+Done:
 
-macOS with Homebrew:
+- Boots as an arm64 Image, drops from EL2 to EL1 if needed
+- PL011 UART driver and `kprintf`
+- Exception vectors with a register dump, `kpanic` and `KASSERT`
+- Bounds-checked device tree parser that finds RAM
+- Host unit tests under ASan/UBSan, and boot tests in QEMU
 
-```sh
-brew install qemu lld
-```
-
-- `qemu`: the emulator, a fake ARM computer that runs our kernel.
-- `lld`: the linker, which glues compiled files into one kernel file.
-- `clang` (the compiler) and `make` already come with macOS (Xcode command line tools).
+Next: physical memory manager, MMU and kernel heap, then interrupts, a scheduler, and
+userspace.
 
 ## Build and run
 
-```sh
-make          # build build/anvil.bin (and build/anvil.elf, for the debugger)
-make run      # boot it in QEMU; you should see "Anvil", then QEMU exits by itself
-make check    # automatic tests: normal boot at EL1 and EL2, plus crash self-tests, PASS/FAIL
-make test     # unit tests that run on the Mac (kprintf formatting)
+Needs clang, `ld.lld`, LLVM binutils, `make` and QEMU. On macOS:
 
-make run SELFTEST=BRK         # boot a kernel that crashes on purpose and see the register dump
-                              # (also UDF, UNALIGNED, ASSERT; see tests/kernel/selftest.c)
+```sh
+brew install qemu lld llvm
+```
+
+```sh
+make          # build build/anvil.bin
+make run      # boot in QEMU (quit with Ctrl-A X)
+make test     # host unit tests
+make check    # boot tests in QEMU
 make help     # all targets
 ```
 
-If the kernel ever hangs inside `make run`, quit QEMU with `Ctrl-A` then `X`.
+Output:
 
-## How it boots
+```
+Anvil
+RAM: 0x40000000 - 0x48000000 (128 MiB)
+```
 
-1. **QEMU starts.** It pretends to be an ARM computer called `virt` with 128 MiB of RAM at
-   address `0x40000000` and a serial port (a PL011 UART) at `0x09000000`.
-2. **QEMU loads `build/anvil.bin`** into RAM at `0x40200000`. This is a raw kernel image: the
-   ELF file stripped down to plain bytes, starting with a 64-byte header that tells QEMU "this
-   is an ARM64 kernel". For this format QEMU also copies the device tree (a description of
-   the machine: RAM, devices) into RAM and passes its address in register `x0`.
-3. **The CPU starts at `_start` in `arch/aarch64/boot.S`.** At this point nothing is set up:
-   no stack, and C code cannot run yet. This assembly code:
-   - jumps over the image header and saves the device tree address from `x0`;
-   - turns interrupts off, because we can't handle them yet;
-   - checks the privilege level (the "exception level"), and if the CPU started at EL2
-     (hypervisor level), drops down to EL1, the level where kernels run;
-   - points the stack pointer at a 16 KiB stack reserved in `link.ld`;
-   - fills the `.bss` area with zeros, because C expects uninitialized globals to start at 0;
-   - calls `kmain()`.
-4. **`kmain()` in `kernel/main.c`** sets up the serial port (`drivers/pl011.c`), prints
-   `Anvil`, and asks the firmware to power off (`arch/aarch64/power.c`), which makes QEMU exit.
+To debug, run `make debug`, then in another terminal `lldb build/anvil.elf -o 'gdb-remote 1234'`.
+
+## Boot
+
+1. QEMU loads `anvil.bin` at `0x40200000` and passes the device tree address in `x0`.
+2. `arch/aarch64/boot.S` masks interrupts, drops to EL1, installs the exception vectors, sets
+   up the stack, zeroes `.bss` and calls `kmain`.
+3. `kmain` (`kernel/main.c`) starts the UART, reads the RAM range from the device tree, prints
+   it and powers off through PSCI.
 
 ## Layout
 
 ```
-arch/aarch64/   code that only makes sense on ARM (boot, power off, register access)
-include/        headers; include/arch/ is what every CPU architecture must provide
-kernel/         architecture-neutral kernel code
-drivers/        device drivers (the PL011 serial port)
-manuals/        hardware manuals (PDFs downloaded by `make manuals`) and what we use from each
-link.ld         where each part of the kernel goes in memory
-CLAUDE.md       coding rules for this repo
-```
-
-## Debugging
-
-```sh
-make debug                                   # QEMU waits, frozen, at the first instruction
-lldb build/anvil.elf -o 'gdb-remote 1234'    # in a second terminal
+arch/aarch64/   boot, exception vectors, MMIO, power off
+include/        headers; include/arch/ is the interface each architecture implements
+kernel/         kmain, kprintf, panic, device tree parser
+drivers/        PL011 UART
+tests/          host unit tests; tests/kernel/ has in-kernel crash tests
+manuals/        reference manuals (`make manuals` downloads them)
 ```
