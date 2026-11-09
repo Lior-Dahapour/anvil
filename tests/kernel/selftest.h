@@ -2,11 +2,10 @@
 #define ANVIL_TESTS_SELFTEST_H
 
 /**
- * Run the self-test chosen at build time (`make SELFTEST=NAME`), instead of the normal boot.
- * Each self-test deliberately ends in a panic; `make check` looks for that panic message.
- * Only built into self-test kernels.
+ * Run the self-test chosen by `make SELFTEST=NAME` instead of the normal boot. Each one ends in
+ * a panic that `make check` looks for.
  *
- * Context: early boot, after the console is set up.
+ * Context: early boot, after console_init().
  */
 _Noreturn void selftest_run(void);
 

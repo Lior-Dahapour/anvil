@@ -1,11 +1,7 @@
 /*
- * Self-tests that run inside the kernel under QEMU. Built only into self-test kernels
- * (`make SELFTEST=NAME`), never into the normal kernel. `make check` builds each one, boots it
- * and checks the serial output for the expected panic message.
- *
- * The exception tests mark the faulting instruction with the global label `selftest_fault`.
- * `make check` looks that label up in the built kernel and requires the dump's ELR to equal
- * it, which proves the trap frame holds the real saved state.
+ * In-kernel crash tests, built only with `make SELFTEST=NAME`. `make check` boots each one and
+ * checks the output. Fault tests label the faulting instruction `selftest_fault`, and the dump's
+ * ELR must equal it.
  */
 #include "selftest.h"
 
@@ -14,7 +10,7 @@
 
 #if defined(ANVIL_SELFTEST_ASSERT)
 
-/* A failing KASSERT must panic and name the condition, file and line. */
+/* KASSERT must panic with the condition, file and line. */
 _Noreturn void selftest_run(void)
 {
     int answer = 2 + 2;
@@ -25,14 +21,10 @@ _Noreturn void selftest_run(void)
 
 #elif defined(ANVIL_SELFTEST_BRK)
 
-/*
- * A breakpoint instruction must reach exception_handler() as EC 0x3c (BRK). x9 is set to a
- * known value first, so `make check` can verify the dump shows the real saved registers.
- */
+/* brk must trap as EC 0x3c. `make check` looks for x9 = 0x1234 in the dump. */
 _Noreturn void selftest_run(void)
 {
-    /* SAFETY: deliberately takes a synchronous exception; the handler never returns here.
-     * x9 is declared clobbered, so the compiler keeps nothing of its own in it. */
+    /* SAFETY: traps on purpose, the handler does not return. x9 is declared clobbered. */
     __asm__ volatile("    mov x9, #0x1234\n"
                      ".global selftest_fault\n"
                      "selftest_fault:\n"
@@ -45,10 +37,10 @@ _Noreturn void selftest_run(void)
 
 #elif defined(ANVIL_SELFTEST_UDF)
 
-/* A permanently undefined instruction must reach exception_handler() as EC 0x00 (unknown). */
+/* udf must trap as EC 0x00 (unknown). */
 _Noreturn void selftest_run(void)
 {
-    /* SAFETY: deliberately takes a synchronous exception; the handler never returns here. */
+    /* SAFETY: traps on purpose, the handler does not return. */
     __asm__ volatile(".global selftest_fault\n"
                      "selftest_fault:\n"
                      "    udf #0\n");
@@ -59,21 +51,15 @@ _Noreturn void selftest_run(void)
 
 static uint64_t selftest_buffer[2];
 
-/*
- * An unaligned 8-byte load must reach exception_handler() as EC 0x25 (data abort in the
- * kernel): with the MMU off every data access is Device memory, where unaligned accesses
- * always fault (Arm ARM D8.2.12.1, B2.10.2).
- */
+/* An unaligned load must fault as EC 0x25: with the MMU off all memory is Device, where
+ * unaligned accesses fault (Arm ARM D8.2.12.1, B2.10.2). */
 _Noreturn void selftest_run(void)
 {
     uint64_t value = 0;
     uintptr_t addr = (uintptr_t)&selftest_buffer[0] + 1U;
 
-    /*
-     * SAFETY: deliberately faulting access. `addr` is inside selftest_buffer, so nothing
-     * outside the kernel image is touched even if the load were allowed; it is 1 byte past
-     * an 8-byte aligned address, so the 8-byte load is misaligned and must fault.
-     */
+    /* SAFETY: faults on purpose. `addr` is inside selftest_buffer, so even a completed load
+     * stays in bounds. */
     __asm__ volatile(".global selftest_fault\n"
                      "selftest_fault:\n"
                      "    ldr %0, [%1]\n"

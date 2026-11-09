@@ -12,25 +12,17 @@
 #define FDT_NOP 4U
 #define FDT_END 9U
 
-/* Device tree numbers are big-endian (most significant byte first), our CPU is little-endian.
- * Building the value byte by byte gives the right number on any CPU, and byte loads can never
- * be misaligned.
+/* Device tree numbers are big-endian. Byte loads work on any CPU and are never misaligned.
  * Safety: the caller guarantees 4 readable bytes at `bytes`. */
 static uint32_t read_be32_unchecked(const uint8_t *bytes)
 {
-    /*
-     * SAFETY: the caller guarantees `bytes` points at 4 readable bytes inside the device tree
-     * (checked against the header's totalsize before any read).
-     */
+    /* SAFETY: 4 readable bytes at `bytes`, guaranteed by the caller. */
     return (uint32_t)bytes[0] << 24 | (uint32_t)bytes[1] << 16 | (uint32_t)bytes[2] << 8 |
            (uint32_t)bytes[3];
 }
 
-/* Bounds-checked read of the 4 bytes at `offset`: the only way to read past the header, where
- * offsets are computed from untrusted lengths in the tree. `blob` and `totalsize` must have
- * passed fdt_check_header, so totalsize >= 40 and `totalsize - 4U` cannot wrap. Comparing
- * against `totalsize - 4U` instead of computing `offset + 4U` keeps a huge offset from wrapping
- * around to a small one. */
+/* Bounds-checked read for offsets computed from the tree. After fdt_check_header totalsize >= 40,
+ * so `totalsize - 4U` cannot wrap, unlike `offset + 4U` with a huge offset. */
 static KMUST_CHECK kerr_t read_be32(const uint8_t *blob, uint32_t totalsize, uint32_t offset,
                                     uint32_t *value)
 {
@@ -38,10 +30,7 @@ static KMUST_CHECK kerr_t read_be32(const uint8_t *blob, uint32_t totalsize, uin
         return KERR_INVALID;
     }
 
-    /*
-     * SAFETY: offset + 4 <= totalsize is checked above, and fdt_check_header verified that
-     * totalsize bytes at `blob` are readable, so all 4 bytes are inside the tree.
-     */
+    /* SAFETY: offset + 4 <= totalsize (above); totalsize bytes readable (fdt_check_header). */
     *value = read_be32_unchecked(blob + offset);
     return KERR_OK;
 }
@@ -53,9 +42,8 @@ kerr_t fdt_check_header(const uint8_t *blob, const size_t len)
     }
 
     /*
-     * SAFETY: `len` >= 40 is checked above and the caller guarantees `len` bytes at `blob` are
-     * readable, so every header field read below (offsets 0, 4, 8, 12, 32) is in bounds. The values
-     * themselves are untrusted until checked.
+     * SAFETY: len >= 40 (above) and the caller guarantees len readable bytes, so the header reads
+     * below are in bounds. The values are untrusted until checked.
      */
     if (read_be32_unchecked(blob) != FDT_MAGIC) {
         return KERR_INVALID;
@@ -66,14 +54,14 @@ kerr_t fdt_check_header(const uint8_t *blob, const size_t len)
         return KERR_INVALID;
     }
 
-    /* Where the token list (structure block) starts. Equal to totalsize is already outside. */
+    /* The token list must start inside the tree. */
     const uint32_t struct_offset = read_be32_unchecked(blob + 8);
     if (struct_offset >= totalsize) {
         return KERR_INVALID;
     }
 
-    /* The strings block (property names) must lie inside the tree; it may be empty. `||`
-     * evaluates left to right, so `totalsize - strings_offset` only runs once it cannot wrap. */
+    /* The strings block may be empty but must fit. The `||` order keeps the subtraction from
+     * wrapping. */
     const uint32_t strings_offset = read_be32_unchecked(blob + 12);
     const uint32_t strings_size = read_be32_unchecked(blob + 32);
     if (strings_offset > totalsize || strings_size > totalsize - strings_offset) {
@@ -82,9 +70,8 @@ kerr_t fdt_check_header(const uint8_t *blob, const size_t len)
 
     return KERR_OK;
 }
-/* Does the property name at `nameoff` in the strings block equal `expected`? A bounded strcmp:
- * a name that runs off the end of the strings block (no 0 byte) is simply not equal. The
- * strings block must have passed fdt_check_header. */
+
+/* Bounded strcmp of the property name at `nameoff`. A name without a 0 byte does not match. */
 static bool name_is(const uint8_t *blob, const uint32_t strings_offset, const uint32_t strings_size,
                     const uint32_t nameoff, const char *expected)
 {
@@ -93,10 +80,7 @@ static bool name_is(const uint8_t *blob, const uint32_t strings_offset, const ui
         if (pos >= strings_size) {
             return false;
         }
-        /*
-         * SAFETY: pos < strings_size (checked above) and the strings block fits inside the
-         * tree (fdt_check_header), so strings_offset + pos < totalsize: in bounds, no wrap.
-         */
+        /* SAFETY: pos < strings_size (above); strings block inside tree (fdt_check_header). */
         const uint8_t c = blob[strings_offset + pos];
         if (c != (uint8_t)expected[i]) {
             return false;
@@ -106,9 +90,8 @@ static bool name_is(const uint8_t *blob, const uint32_t strings_offset, const ui
         }
     }
 }
-/* Is this the /memory node? Its name is "memory", optionally followed by "@" and a unit address
- * (DT spec v0.4, 2.2.1 and 3.4). The unit address is only a label: the real range is in `reg`,
- * so it is not parsed.
+
+/* "memory" or "memory@<unit-address>" (DT spec v0.4, 2.2.1 and 3.4).
  * Safety: the caller guarantees `name_len` readable bytes at `name`. */
 static bool node_is_memory_unchecked(const uint8_t *name, uint32_t name_len)
 {
@@ -117,8 +100,7 @@ static bool node_is_memory_unchecked(const uint8_t *name, uint32_t name_len)
     if (name_len < 6U) {
         return false;
     }
-    /* SAFETY: name_len >= 6 is checked above, so name[0..5] (and name[6] below, once
-     * name_len > 6) are within the caller's name_len bytes. */
+    /* SAFETY: name_len >= 6 (above); name[6] is read only when name_len > 6. */
     for (uint32_t i = 0; i < 6U; i++) {
         if (name[i] != (uint8_t)memory[i]) {
             return false;
@@ -129,9 +111,8 @@ static bool node_is_memory_unchecked(const uint8_t *name, uint32_t name_len)
     }
     return name[6] == '@';
 }
-/* Read a 1- or 2-cell number (#address-cells / #size-cells) at `offset`. With 2 cells the first
- * is the high half (DT spec v0.4, 2.2.4: values are big-endian). Other cell counts are not
- * supported, as in Linux on 64-bit. */
+
+/* A 1- or 2-cell number, high cell first (DT spec v0.4, 2.2.4). */
 static KMUST_CHECK kerr_t read_cells(const uint8_t *blob, uint32_t totalsize, uint32_t offset,
                                      uint32_t cells, uint64_t *value)
 {
@@ -146,7 +127,7 @@ static KMUST_CHECK kerr_t read_cells(const uint8_t *blob, uint32_t totalsize, ui
         if (read_be32(blob, totalsize, offset, &high) != KERR_OK) {
             return KERR_INVALID;
         }
-        /* The read above proved offset <= totalsize - 4, so offset + 4U cannot wrap. */
+        /* offset <= totalsize - 4 (read above), so offset + 4U cannot wrap. */
         uint32_t low = 0;
         if (read_be32(blob, totalsize, offset + 4U, &low) != KERR_OK) {
             return KERR_INVALID;
@@ -157,6 +138,7 @@ static KMUST_CHECK kerr_t read_cells(const uint8_t *blob, uint32_t totalsize, ui
     }
     return KERR_OK;
 }
+
 kerr_t fdt_find_memory(const uint8_t *blob, const size_t len, phys_addr_t *base, uint64_t *size)
 {
     if (fdt_check_header(blob, len) != KERR_OK) {
@@ -201,11 +183,9 @@ kerr_t fdt_find_memory(const uint8_t *blob, const size_t len, phys_addr_t *base,
             depth++;
             const uint32_t name_start = offset;
             /*
-             * The node name: a 0-terminated string with no stored length, then zero padding to
-             * the next 4-byte boundary (DT spec v0.4, 5.4.1). A corrupt tree may have no 0.
-             *
-             * SAFETY: `offset < totalsize` is tested before every `blob[offset]` read, and
-             * fdt_check_header verified that totalsize bytes at `blob` are readable.
+             * Name: 0-terminated, padded to 4 bytes (DT spec v0.4, 5.4.1). A corrupt tree may
+             * have no 0.
+             * SAFETY: offset < totalsize before every read; readable (fdt_check_header).
              */
             while (offset < totalsize && blob[offset] != 0) {
                 offset++;
@@ -213,18 +193,12 @@ kerr_t fdt_find_memory(const uint8_t *blob, const size_t len, phys_addr_t *base,
             if (offset == totalsize) {
                 return KERR_INVALID;
             }
-            /*
-             * SAFETY: the name is blob[name_start .. offset), and offset < totalsize (the 0
-             * byte was found, see above), so all name_len bytes are inside the tree, which
-             * fdt_check_header verified is readable. offset >= name_start, so the length
-             * cannot wrap.
-             */
+            /* SAFETY: the name is blob[name_start..offset), inside the tree (0 found above). */
             if (depth == 2U && node_is_memory_unchecked(blob + name_start, offset - name_start)) {
                 in_memory = true;
             }
             offset++;
-            /* A token must follow the name. Checking for room first also keeps `offset + 3U`
-             * from wrapping in the round-up to a multiple of 4. */
+            /* Room for the next token. Also keeps `offset + 3U` from wrapping. */
             if (offset > totalsize - 4U) {
                 return KERR_INVALID;
             }
@@ -232,8 +206,7 @@ kerr_t fdt_find_memory(const uint8_t *blob, const size_t len, phys_addr_t *base,
             continue;
         }
         if (token == FDT_PROP) {
-            /* PROP is followed by the value's length, the name's offset in the strings block,
-             * the value, and zero padding to a 4-byte boundary (DT spec v0.4, 5.4.1). */
+            /* PROP: length, name offset, value, padding to 4 bytes (DT spec v0.4, 5.4.1). */
             uint32_t prop_len = 0;
             if (read_be32(blob, totalsize, offset, &prop_len) != KERR_OK) {
                 return KERR_INVALID;
@@ -259,17 +232,14 @@ kerr_t fdt_find_memory(const uint8_t *blob, const size_t len, phys_addr_t *base,
                 if (prop_len != 4U) {
                     return KERR_INVALID;
                 }
-
                 if (read_be32(blob, totalsize, value_offset, &size_cells) != KERR_OK) {
                     return KERR_INVALID;
                 }
             }
-            /* The memory node's reg: the first (address, size) pair is the RAM range. Other
-             * pairs (RAM split into several ranges) are not used yet. */
+            /* First (address, size) pair of /memory reg. Further ranges are not used yet. */
             if (in_memory && depth == 2U &&
                 name_is(blob, strings_offset, strings_size, nameoff, "reg")) {
-                /* Only 1 or 2 cells are supported (as in read_cells). Checked first, so the
-                 * length below is at most 16 bytes and cannot wrap. */
+                /* Checked first, so the length below is at most 16 and cannot wrap. */
                 if (address_cells < 1U || address_cells > 2U || size_cells < 1U ||
                     size_cells > 2U) {
                     return KERR_INVALID;
@@ -291,15 +261,14 @@ kerr_t fdt_find_memory(const uint8_t *blob, const size_t len, phys_addr_t *base,
                 *size = ram_size;
                 return KERR_OK;
             }
-            /* prop_len comes from the tree and can be anything: compare it with the bytes
-             * left instead of computing `offset + prop_len`, which could wrap. The read above
-             * ended at `offset`, so `totalsize - offset` cannot wrap. */
+            /* prop_len is untrusted: compare with the bytes left, `offset + prop_len` could
+             * wrap. */
             if (prop_len > totalsize - offset) {
                 return KERR_INVALID;
             }
             offset += prop_len;
 
-            /* Same as after a node name: room for the next token, then round up. */
+            /* As after a node name. */
             if (offset > totalsize - 4U) {
                 return KERR_INVALID;
             }

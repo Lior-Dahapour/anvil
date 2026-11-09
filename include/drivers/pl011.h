@@ -4,20 +4,20 @@
 #include <anvil/types.h>
 
 /**
- * Set up the PL011 UART (serial port) for output: 8 data bits, no parity, 1 stop bit.
+ * Set up the PL011 UART for output, 8N1.
  *
- * @param base  Address of the UART's register block, mapped as Device memory.
+ * @param base  The UART's register block, mapped as Device memory.
  *
- * Context: early boot, single CPU. Must be called before pl011_putc().
+ * Context: early boot, single CPU, before pl011_putc().
  */
 void pl011_init(virt_addr_t base);
 
 /**
- * Send one byte, waiting while the transmit FIFO is full. No newline translation.
+ * Send one byte, waiting while the TX FIFO is full. No newline translation.
  *
- * @param c  The byte to send.
+ * @param c  The byte.
  *
- * Context: single CPU (no locking yet). Must be called after pl011_init().
+ * Context: single CPU, no locking yet. After pl011_init().
  */
 void pl011_putc(char c);
 

@@ -3,8 +3,7 @@
 
 #include <stdint.h>
 
-/* Separate struct types so the compiler rejects passing a physical address where a virtual
- * one is expected (and the other way round). */
+/* Distinct types, so physical and virtual addresses cannot be mixed up. */
 typedef struct {
     uint64_t value;
 } phys_addr_t;

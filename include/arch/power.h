@@ -2,11 +2,9 @@
 #define ANVIL_ARCH_POWER_H
 
 /**
- * Power the machine off. Under QEMU this makes QEMU exit.
+ * Power off (QEMU exits). If the firmware refuses, the CPU idles forever.
  *
- * If the firmware refuses, the CPU stops in a low-power wait loop instead. Never returns.
- *
- * Context: any.
+ * Context: any. Does not return.
  */
 _Noreturn void arch_poweroff(void);
 

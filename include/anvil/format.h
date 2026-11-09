@@ -4,26 +4,18 @@
 #include <stdarg.h>
 #include <stddef.h>
 
-/**
- * Receives each output character of kformat(), in order.
- *
- * @param c    The character.
- * @param ctx  The `ctx` pointer passed to kformat(), unchanged.
- */
+/** Receives each output character of kformat(), with the `ctx` passed to it. */
 typedef void (*kformat_emit_fn)(char c, void *ctx);
 
 /**
- * printf-style formatting, without any output device: every character is handed to `emit`.
+ * printf-style formatting that hands each character to `emit`.
  *
- * Supported conversions: %c %s %d %i %u %x %X %p %%. Length modifiers: l, ll, z. An optional
- * width with optional '0' flag, for example %5d or %016lx. %p prints "0x" and 16 hex digits.
- * A NULL %s prints "(null)". Anything unsupported is printed as written.
- *
- * Has no global state and allocates nothing, so it also compiles and runs on the host for
- * unit tests (`make test`).
+ * Supports %c %s %d %i %u %x %X %p %%, the l, ll and z modifiers, a width, and the '-' and '0'
+ * flags. %p is "0x" plus 16 hex digits. A NULL %s prints "(null)". Anything else is printed as
+ * written. No global state, so it also runs on the host for `make test`.
  *
  * @param emit  Character sink. Must not be NULL.
- * @param ctx   Passed through to `emit`. May be NULL.
+ * @param ctx   Passed to `emit`. May be NULL.
  * @param fmt   Format string. Must not be NULL.
  * @param args  Arguments matching `fmt`.
  *

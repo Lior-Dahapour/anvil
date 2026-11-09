@@ -2,10 +2,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Widths beyond this are clamped: nothing in the kernel needs more, and it bounds the loop. */
+/* Larger widths are clamped, which bounds the padding loop. */
 #define MAX_WIDTH 64U
 
-/* 2^64 - 1 has 20 decimal digits, the longest number we can print. */
+/* UINT64_MAX has 20 decimal digits. */
 #define MAX_DIGITS 20U
 
 struct output {
@@ -34,13 +34,13 @@ static void put_repeated(struct output *out, char c, size_t times)
     }
 }
 
-/* How one conversion should be laid out, from the flags, width and conversion character. */
+/* Layout of one conversion. */
 struct spec {
-    size_t width;      /* Minimum number of characters. */
-    char pad;          /* ' ' or '0' (the '0' flag). Ignored when `left` is set. */
-    bool left;         /* '-' flag: align left, pad with spaces on the right. */
-    unsigned int base; /* 10 or 16, for numbers. */
-    bool upper;        /* %X: upper-case hex digits. */
+    size_t width;      /* minimum width */
+    char pad;          /* ' ' or '0', ignored when `left` */
+    bool left;         /* '-' flag */
+    unsigned int base; /* 10 or 16 */
+    bool upper;        /* %X */
 };
 
 static void put_string(struct output *out, const char *str)
@@ -59,7 +59,7 @@ static size_t string_length(const char *str)
     return length;
 }
 
-/* %s and %c: the text, padded with spaces to the width on the left or (with '-') right. */
+/* %s and %c, padded with spaces. */
 static void put_padded_string(struct output *out, const struct spec *spec, const char *str)
 {
     size_t length = string_length(str);
@@ -74,11 +74,7 @@ static void put_padded_string(struct output *out, const struct spec *spec, const
     }
 }
 
-/*
- * Print `magnitude` in spec->base, with a '-' in front when `negative`. Zero padding goes
- * between the sign and the digits ("-0042"), space padding before the sign ("  -42"), and with
- * the '-' flag spaces go after the digits ("-42  ").
- */
+/* Zero padding goes after the sign ("-0042"), space padding before it ("  -42"). */
 static void put_number(struct output *out, const struct spec *spec, uint64_t magnitude,
                        bool negative)
 {
@@ -86,7 +82,7 @@ static void put_number(struct output *out, const struct spec *spec, uint64_t mag
     char digits[MAX_DIGITS];
     size_t count = 0;
 
-    /* Digits come out lowest first, so they are stored reversed and printed backwards. */
+    /* Lowest digit first, printed in reverse below. */
     do {
         digits[count] = digit_chars[magnitude % spec->base];
         count++;
@@ -150,8 +146,7 @@ size_t kformat(kformat_emit_fn emit, void *ctx, const char *fmt, va_list args)
     struct output out = {.emit = emit, .ctx = ctx, .count = 0};
     va_list ap;
 
-    /* Work on a copy so the helpers can take it by pointer (a va_list parameter may be an
-     * array type, so `&args` would not have the type `va_list *`). */
+    /* A va_list parameter may be an array type, so `&args` is not a `va_list *`. Use a copy. */
     va_copy(ap, args);
 
     const char *p = fmt;
@@ -167,7 +162,6 @@ size_t kformat(kformat_emit_fn emit, void *ctx, const char *fmt, va_list args)
 
         struct spec spec = {.width = 0, .pad = ' ', .left = false, .base = 10U, .upper = false};
 
-        /* Flags, in any order: '-' (align left) and '0' (zero padding). */
         while (*p == '-' || *p == '0') {
             if (*p == '-') {
                 spec.left = true;
@@ -203,7 +197,7 @@ size_t kformat(kformat_emit_fn emit, void *ctx, const char *fmt, va_list args)
         case 'd':
         case 'i': {
             int64_t value = read_signed(&ap, length);
-            /* Negate in unsigned arithmetic so INT64_MIN does not overflow. */
+            /* Unsigned negation, so INT64_MIN does not overflow. */
             uint64_t magnitude = value < 0 ? 0U - (uint64_t)value : (uint64_t)value;
             put_number(&out, &spec, magnitude, value < 0);
             break;
@@ -218,7 +212,7 @@ size_t kformat(kformat_emit_fn emit, void *ctx, const char *fmt, va_list args)
             put_number(&out, &spec, read_unsigned(&ap, length), false);
             break;
         case 'p': {
-            /* Always "0x" and 16 hex digits, whatever flags were given. */
+            /* Always "0x" and 16 digits, whatever the flags. */
             struct spec pointer = {.width = 16U, .pad = '0', .left = false, .base = 16U};
             put_string(&out, "0x");
             put_number(&out, &pointer, (uint64_t)(uintptr_t)va_arg(ap, void *), false);
@@ -238,7 +232,7 @@ size_t kformat(kformat_emit_fn emit, void *ctx, const char *fmt, va_list args)
             put_char(&out, '%');
             break;
         default:
-            /* Unsupported or truncated ("%" at the end): print the spec as written. */
+            /* Unsupported or truncated: print as written. */
             for (const char *q = spec_start; q < p; q++) {
                 put_char(&out, *q);
             }

@@ -1,7 +1,4 @@
-/*
- * Host unit tests for kformat(). Built and run on the development machine by `make test`, with
- * AddressSanitizer and UndefinedBehaviorSanitizer.
- */
+/* Host unit tests for kformat() (`make test`, ASan + UBSan). */
 #include <anvil/format.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -28,7 +25,7 @@ static void buffer_emit(char c, void *ctx)
     }
 }
 
-/* Arrange: format into a fresh buffer. Act: kformat. Assert: text and count match. */
+/* Format into a fresh buffer; text and count must match. */
 static void check_va(const char *expected, const char *fmt, va_list args)
 {
     struct buffer buf = {.data = {0}, .used = 0};
@@ -42,7 +39,7 @@ static void check_va(const char *expected, const char *fmt, va_list args)
     }
 }
 
-/* Compiler-checked format string: catches mistakes in the tests themselves. */
+/* Compiler-checked, catches mistakes in the tests themselves. */
 static void check(const char *expected, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 
 static void check(const char *expected, const char *fmt, ...)
@@ -54,7 +51,7 @@ static void check(const char *expected, const char *fmt, ...)
     va_end(args);
 }
 
-/* Not compiler-checked, for testing deliberately malformed format strings. */
+/* Not compiler-checked, for deliberately malformed formats. */
 static void check_malformed(const char *expected, const char *fmt, ...)
 {
     va_list args;

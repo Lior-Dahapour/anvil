@@ -3,33 +3,29 @@
 
 #include <stdarg.h>
 
-/**
- * Sends one raw byte to the output device (no newline translation).
- *
- * @param c  The byte.
- */
+/** Writes one raw byte to the output device (no newline translation). */
 typedef void (*console_putc_fn)(char c);
 
 /**
- * Choose where kprintf() output goes. Until this is called, output is dropped.
+ * Set where kprintf() output goes. Output is dropped until then.
  *
- * @param putc  Output function, for example pl011_putc. Must not be NULL.
+ * @param putc  Output function, e.g. pl011_putc. Must not be NULL.
  *
- * Context: early boot, single CPU. Call once, before any kprintf().
+ * Context: early boot, single CPU, before any kprintf().
  */
 void console_init(console_putc_fn putc);
 
 /**
- * Formatted print to the console. Same format rules as kformat(). "\n" is sent as "\r\n".
+ * Formatted print to the console, with kformat() rules. "\n" is sent as "\r\n".
  *
  * @param fmt  Format string. Must not be NULL.
  *
- * Context: single CPU, no locking yet. Not safe to call from two CPUs at once.
+ * Context: single CPU, no locking yet.
  */
 void kprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /**
- * kprintf() for callers that already hold a va_list, such as kpanic().
+ * kprintf() with a va_list.
  *
  * @param fmt   Format string. Must not be NULL.
  * @param args  Arguments matching `fmt`.

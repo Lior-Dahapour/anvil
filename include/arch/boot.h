@@ -4,10 +4,10 @@
 #include <anvil/types.h>
 
 /**
- * Physical address of the device tree the bootloader handed to the kernel. Not validated:
- * pass it to the fdt_* functions, which check it before trusting anything in it.
+ * Physical address of the device tree from the bootloader. Not validated: the fdt_* functions
+ * check it.
  *
- * Context: any, after the architecture's boot code has run (always true in kmain).
+ * Context: any, after the arch boot code (always true in kmain).
  */
 phys_addr_t arch_boot_dtb_address(void);
 

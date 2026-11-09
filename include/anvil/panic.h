@@ -2,25 +2,16 @@
 #define ANVIL_PANIC_H
 
 /**
- * Stop the kernel because of a kernel bug or a broken invariant: print "PANIC: <message>" to
- * the console, then power the machine off. Never returns.
+ * Print "PANIC: <message>" and power off. Only for kernel bugs: errors caused by input or
+ * hardware are returned as error codes.
  *
- * Only for bugs in the kernel itself. Errors caused by user input or by hardware must be
- * returned as error codes instead.
+ * @param fmt  printf-style message, kprintf() rules.
  *
- * @param fmt  printf-style message, same rules as kprintf().
- *
- * Context: any. Safe to call while a panic is already in progress (the second one does not
- * print, it only stops).
+ * Context: any. A panic during a panic does not print again.
  */
 _Noreturn void kpanic(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
-/**
- * Panic if `cond` is false, naming the condition and where it is written.
- *
- * A macro, not a function, so that #cond, __FILE__ and __LINE__ describe the caller's line.
- * The do/while(0) makes it behave like one statement, also inside an unbraced if/else.
- */
+/** Panic with the condition, file and line if `cond` is false. */
 #define KASSERT(cond)                                                                              \
     do {                                                                                           \
         if (!(cond)) {                                                                             \

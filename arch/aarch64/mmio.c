@@ -2,11 +2,9 @@
 #include <arch/mmio.h>
 
 /*
- * Plain `ldr`/`str` through inline asm, instead of a C volatile pointer: the compiler may pick
- * load/store forms with address writeback, which hypervisors (including macOS HVF, if we ever
- * run with -accel hvf) cannot emulate on a device access because the CPU does not report the
- * register details for them (Arm ARM D24.2.45, ESR_EL2.ISV bit 24: no valid syndrome for
- * loads/stores "with writeback"). The asm pins the exact form.
+ * Inline asm instead of a volatile pointer, so the compiler cannot pick a load/store with
+ * writeback: hypervisors cannot emulate those on MMIO (no valid syndrome, ESR_EL2.ISV, Arm ARM
+ * D24.2.45).
  */
 
 uint32_t mmio_read32(virt_addr_t base, size_t offset)
@@ -17,12 +15,9 @@ uint32_t mmio_read32(virt_addr_t base, size_t offset)
     uintptr_t addr = (uintptr_t)(base.value + offset);
 
     /*
-     * SAFETY: the caller guarantees `base` is a device register block that is mapped as
-     * Device memory (or the MMU is off, which makes every data access Device-nGnRnE, Arm ARM
-     * D8.2.12.1), and that
-     * `offset` is a 4-byte aligned register inside it. A single 32-bit load matches the
-     * register width. "memory" clobber stops the compiler moving other memory accesses
-     * across this one.
+     * SAFETY: caller passes a register block mapped as Device memory, or the MMU is off and all
+     * accesses are Device-nGnRnE (Arm ARM D8.2.12.1). Offset is 4-byte aligned (asserted).
+     * "memory" stops the compiler moving other accesses across this one.
      */
     __asm__ volatile("ldr %w0, [%1]" : "=r"(value) : "r"(addr) : "memory");
     return value;
@@ -35,10 +30,8 @@ void mmio_write32(virt_addr_t base, size_t offset, uint32_t value)
     uintptr_t addr = (uintptr_t)(base.value + offset);
 
     /*
-     * SAFETY: same requirements on `base` and `offset` as mmio_read32(). A single 32-bit
-     * store matches the register width. Device-nGnRnE accesses to one device are not
-     * reordered by the CPU (the "nR" attribute, Arm ARM B2.10.2.2); the "memory" clobber stops
-     * the compiler doing so.
+     * SAFETY: as in mmio_read32(). The CPU does not reorder Device-nGnRnE accesses to one device
+     * (Arm ARM B2.10.2.2); "memory" stops the compiler doing so.
      */
     __asm__ volatile("str %w0, [%1]" : : "rZ"(value), "r"(addr) : "memory");
 }

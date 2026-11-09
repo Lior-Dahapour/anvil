@@ -4,7 +4,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 
-/* Set once by console_init() during single-CPU early boot, read-only afterwards. */
+/* Set once by console_init() in early boot, read-only after. */
 static console_putc_fn console_out;
 
 void console_init(console_putc_fn putc)
@@ -13,7 +13,7 @@ void console_init(console_putc_fn putc)
     console_out = putc;
 }
 
-/* Terminals need "\r\n" to start a new line at the left edge; callers just write "\n". */
+/* Terminals need "\r\n" to go back to the first column. */
 static void console_emit(char c, void *ctx)
 {
     (void)ctx;

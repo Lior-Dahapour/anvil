@@ -11,7 +11,7 @@
 #include <selftest.h>
 #endif
 
-/* QEMU `virt` PL011 UART. TODO(dtb): take this from the device tree's /chosen stdout-path. */
+/* TODO(dtb): take the UART from /chosen stdout-path. */
 #define QEMU_VIRT_UART_BASE 0x09000000U
 
 /* Linux Documentation/arch/arm64/booting.rst, section 2: the DTB is at most 2 MiB. */
@@ -19,7 +19,7 @@
 
 _Noreturn void kmain(void)
 {
-    /* MMU is off, so the physical register address is also the address we use. */
+    /* MMU off: virtual = physical. */
     virt_addr_t uart = {.value = QEMU_VIRT_UART_BASE};
 
     pl011_init(uart);
@@ -34,9 +34,8 @@ _Noreturn void kmain(void)
     phys_addr_t dtb = arch_boot_dtb_address();
 
     /*
-     * SAFETY: the MMU is off, so a physical address is used directly as a pointer. The arm64
-     * boot protocol puts the DTB in RAM, 8-byte aligned and at most 2 MiB (DTB_MAX_SIZE), and
-     * fdt_find_memory never reads past the header's totalsize, which it checks is <= that.
+     * SAFETY: MMU off, so the physical address works as a pointer. The boot protocol puts the
+     * DTB in RAM, at most DTB_MAX_SIZE; fdt_find_memory never reads past its totalsize.
      */
     const uint8_t *blob = (const uint8_t *)(uintptr_t)dtb.value;
     phys_addr_t ram_base = {.value = 0};

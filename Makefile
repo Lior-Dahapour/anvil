@@ -2,13 +2,11 @@
 
 ARCH ?= aarch64
 
-# SELFTEST=NAME builds a test kernel that runs tests/kernel/selftest.c instead of booting
-# normally, into its own folder so it never mixes with the normal build. Used by `make check`.
+# SELFTEST=NAME builds a crash-test kernel (tests/kernel/selftest.c) in its own folder.
 SELFTEST ?=
 BUILD := build$(if $(SELFTEST),/selftest-$(SELFTEST))
 KERNEL := $(BUILD)/anvil.elf
-# Raw image (ELF stripped to plain bytes) that QEMU boots: only for this format does it pass the
-# device tree address in x0. The ELF stays for lldb, which needs its symbols.
+# QEMU passes the DTB in x0 only for a raw Image. The ELF keeps the symbols for lldb.
 IMAGE := $(BUILD)/anvil.bin
 
 CC := clang
@@ -20,7 +18,7 @@ OBJCOPY ?= $(firstword $(wildcard /opt/homebrew/opt/llvm/bin/llvm-objcopy) llvm-
 
 TARGET := --target=aarch64-none-elf
 
-# See CLAUDE.md "Toolchain and Build" for why each flag is required.
+# Why each flag: CLAUDE.md, "Toolchain and Build".
 CFLAGS := $(TARGET) -std=c11 -ffreestanding -fno-stack-protector -fno-pic -fno-pie \
           -mgeneral-regs-only -mstrict-align -O2 -g \
           -Wall -Wextra -Werror -Wshadow -Wconversion -Wsign-conversion \
@@ -38,11 +36,10 @@ ASM_SRCS := $(wildcard arch/$(ARCH)/*.S)
 OBJS := $(patsubst %,$(BUILD)/%.o,$(ASM_SRCS) $(C_SRCS))
 
 QEMU_FLAGS := -M virt -cpu cortex-a72 -m 128M -nographic -no-reboot
-# Kill QEMU if the kernel hangs instead of powering off (macOS has no `timeout`).
+# Kill QEMU if the kernel hangs (macOS has no `timeout`).
 CHECK_TIMEOUT := perl -e 'alarm shift; exec @ARGV' 10
 
-# Reference manuals (see manuals/README.md). Downloaded, not committed: Arm's license does not
-# allow redistributing them.
+# Reference manuals (manuals/README.md). Not committed: Arm's license forbids redistribution.
 ARM_DOCS := https://documentation-service.arm.com/static
 MANUALS := \
     manuals/DDI0487M_d_arm_architecture_reference_manual.pdf=$(ARM_DOCS)/6abbec2a6db85c5e6614a4a1 \
@@ -71,17 +68,16 @@ $(BUILD)/%.S.o: %.S
 run: $(IMAGE)
 	$(QEMU) $(QEMU_FLAGS) -kernel $(IMAGE)
 
-# Same, but QEMU starts the CPU at EL2 (like real hardware), to exercise the EL2 -> EL1 drop.
+# Start at EL2, like real hardware, to test the drop to EL1.
 run-el2: $(IMAGE)
 	$(QEMU) $(subst -M virt,-M virt$(comma)virtualization=on,$(QEMU_FLAGS)) -kernel $(IMAGE)
 
-# Freeze the CPU at the first instruction and wait for a debugger on port 1234.
+# Wait for a debugger on port 1234 before the first instruction.
 debug: $(IMAGE)
 	@echo "In another terminal: lldb $(KERNEL) -o 'gdb-remote 1234'"
 	$(QEMU) $(QEMU_FLAGS) -kernel $(IMAGE) -s -S
 
-# Boot one kernel and require that QEMU exits by itself (exit 0, the kernel powered off) and
-# that the serial output contains a line matching a pattern.
+# Pass if QEMU exits 0 (the kernel powered off) and the output matches a pattern.
 # $(1) machine, $(2) kernel file, $(3) grep pattern, $(4) test name.
 define qemu_expect
 	out=$$($(CHECK_TIMEOUT) $(QEMU) $(subst -M virt,-M $(1),$(QEMU_FLAGS)) -kernel $(2) \
@@ -93,10 +89,8 @@ define qemu_expect
 	fi
 endef
 
-# Boot an exception self-test kernel and require: the expected exception line, an ELR equal
-# to the address of the `selftest_fault` label in that kernel (proof that the trap frame holds
-# the real saved state), the register pattern REGS_<name> if one is set, the final panic, and
-# QEMU exiting by itself.
+# Pass if the dump shows the expected exception, ELR equals the `selftest_fault` label,
+# REGS_<name> matches (if set), and the kernel panics and powers off.
 # $(1) self-test name, $(2) test name.
 define qemu_expect_fault
 	kernel=build/selftest-$(1)/anvil.elf; \
@@ -114,8 +108,7 @@ define qemu_expect_fault
 	fi
 endef
 
-# Expected line of each self-test. Kept in variables because a "(" inside $(call ...) would be
-# read as the start of another make function.
+# In variables because a "(" inside $(call ...) would confuse make.
 EXPECT_ASSERT := ^PANIC: assertion failed: answer == 5 (tests/kernel/selftest.c:[0-9]*)$$
 EXPECT_BRK := ^EXCEPTION: BRK (breakpoint instruction) (entry 4)$$
 EXPECT_UDF := ^EXCEPTION: unknown reason (undefined instruction?) (entry 4)$$
@@ -124,10 +117,10 @@ EXPECT_UNALIGNED := ^EXCEPTION: data abort in kernel (entry 4)$$
 REGS_BRK := x9  0000000000001234
 FAULT_SELFTESTS := BRK UDF UNALIGNED
 
-# The RAM line the kernel prints from the device tree: QEMU_FLAGS gives 128 MiB at 1 GiB.
+# QEMU_FLAGS gives 128 MiB at 1 GiB.
 EXPECT_RAM := ^RAM: 0x40000000 - 0x48000000 (128 MiB)$$
 
-# Milestone test: normal boot at EL1 and EL2 entry, then each self-test kernel.
+# Boot tests: EL1 and EL2 entry, then each self-test kernel.
 check: $(IMAGE)
 	@$(call qemu_expect,virt,$(IMAGE),^Anvil,boot at EL1)
 	@$(call qemu_expect,virt,$(IMAGE),$(EXPECT_RAM),RAM found in the device tree)
@@ -139,8 +132,7 @@ check: $(IMAGE)
 	@$(call qemu_expect_fault,UDF,undefined instruction is caught)
 	@$(call qemu_expect_fault,UNALIGNED,unaligned load is caught as a data abort)
 
-# Host unit tests for pure logic: compiled for this Mac (not the kernel), with sanitizers that
-# abort on out-of-bounds memory access and undefined behavior.
+# Host unit tests for pure logic, with ASan and UBSan.
 HOST_CC := cc
 HOST_CFLAGS := -std=c11 -g -O1 -Wall -Wextra -Werror -Wshadow -Wconversion -Wsign-conversion \
                -Wstrict-prototypes -Wmissing-prototypes -Wvla -Iinclude \
@@ -155,13 +147,12 @@ $(BUILD)/host/fdt_test: tests/fdt_test.c kernel/fdt.c include/anvil/fdt.h includ
 	@mkdir -p $(dir $@)
 	$(HOST_CC) $(HOST_CFLAGS) tests/fdt_test.c kernel/fdt.c -o $@
 
-# QEMU's own device tree for the machine we boot, so the parser is tested on the real thing.
+# QEMU's own device tree, to test the parser on the real thing.
 $(BUILD)/host/virt.dtb:
 	@mkdir -p $(dir $@)
 	$(QEMU) $(subst -M virt,-M virt$(comma)dumpdtb=$@,$(QEMU_FLAGS)) >/dev/null
 
-# Each test binary gets the same time limit as the QEMU tests, so a parser stuck in a loop
-# fails the run instead of hanging it.
+# Time limit, so a parser stuck in a loop fails instead of hanging.
 test: $(HOST_TESTS) $(BUILD)/host/virt.dtb
 	@$(CHECK_TIMEOUT) $(BUILD)/host/format_test
 	@$(CHECK_TIMEOUT) $(BUILD)/host/fdt_test $(BUILD)/host/virt.dtb || \
