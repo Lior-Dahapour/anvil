@@ -52,8 +52,8 @@ static void test_set_clear(void)
     bitmap_set(&b, 63);
     bitmap_set(&b, 64);
     bitmap_set(&b, 127);
-    expect("set edges", storage[0] == ((1ULL << 63) | 1U) &&
-                            storage[1] == ((1ULL << 63) | (1ULL << 6) | 1U));
+    expect("set edges",
+           storage[0] == ((1ULL << 63) | 1U) && storage[1] == ((1ULL << 63) | (1ULL << 6) | 1U));
 
     bitmap_clear(&b, 70);
     expect("clear 70", !bitmap_test(&b, 70) && storage[1] == ((1ULL << 63) | 1U));

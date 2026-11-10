@@ -137,7 +137,8 @@ HOST_CC := cc
 HOST_CFLAGS := -std=c11 -g -O1 -Wall -Wextra -Werror -Wshadow -Wconversion -Wsign-conversion \
                -Wstrict-prototypes -Wmissing-prototypes -Wvla -Iinclude \
                -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
-HOST_TESTS := $(BUILD)/host/format_test $(BUILD)/host/fdt_test $(BUILD)/host/bitmap_test
+HOST_TESTS := $(BUILD)/host/format_test $(BUILD)/host/fdt_test $(BUILD)/host/bitmap_test \
+              $(BUILD)/host/pmm_test
 
 $(BUILD)/host/format_test: tests/format_test.c kernel/format.c include/anvil/format.h
 	@mkdir -p $(dir $@)
@@ -151,6 +152,11 @@ $(BUILD)/host/bitmap_test: tests/bitmap_test.c lib/bitmap.c include/anvil/bitmap
 	@mkdir -p $(dir $@)
 	$(HOST_CC) $(HOST_CFLAGS) tests/bitmap_test.c lib/bitmap.c -o $@
 
+$(BUILD)/host/pmm_test: tests/pmm_test.c mm/pmm.c lib/bitmap.c include/anvil/pmm.h \
+                        include/anvil/bitmap.h
+	@mkdir -p $(dir $@)
+	$(HOST_CC) $(HOST_CFLAGS) tests/pmm_test.c mm/pmm.c lib/bitmap.c -o $@
+
 # QEMU's own device tree, to test the parser on the real thing.
 $(BUILD)/host/virt.dtb:
 	@mkdir -p $(dir $@)
@@ -162,6 +168,7 @@ test: $(HOST_TESTS) $(BUILD)/host/virt.dtb
 	@$(CHECK_TIMEOUT) $(BUILD)/host/fdt_test $(BUILD)/host/virt.dtb || \
 	    { echo "fdt_test failed or timed out"; exit 1; }
 	@$(CHECK_TIMEOUT) $(BUILD)/host/bitmap_test
+	@$(CHECK_TIMEOUT) $(BUILD)/host/pmm_test
 
 format:
 	$(CLANG_FORMAT) -i $(C_SRCS) $(wildcard tests/*.c tests/kernel/*.c tests/kernel/*.h include/*/*.h arch/$(ARCH)/*.h)

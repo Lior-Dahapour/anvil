@@ -4,9 +4,9 @@
 #ifndef ANVIL_BITMAP_H
 #define ANVIL_BITMAP_H
 #include <anvil/kerr.h>
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 /* Bit n is bit n % 64 of word[n / 64]. */
 struct bitmap {

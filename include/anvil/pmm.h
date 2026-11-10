@@ -32,7 +32,7 @@ size_t pmm_bitmap_bytes(uint64_t ram_size);
  * @param bitmap_bytes  Size of `bitmap` in bytes.
  *
  * @return KERR_OK, or KERR_INVALID if `bitmap` is NULL or too small, `ram_base` is not
- *         aligned, or `ram_size` is less than one frame.
+ *         aligned, `ram_size` is less than one frame, or `ram_base + ram_size` overflows.
  *
  * Context: early boot, single core. Calling it again starts over.
  */
