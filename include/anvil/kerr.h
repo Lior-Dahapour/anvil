@@ -8,6 +8,8 @@ typedef enum {
     KERR_INVALID = -1,
     /* Valid input without the requested item. */
     KERR_NOT_FOUND = -2,
+    /* Out of memory. */
+    KERR_NOMEM = -3,
 } kerr_t;
 
 /* For functions returning kerr_t: an ignored result fails the build (-Werror). */

@@ -27,7 +27,7 @@ CFLAGS := $(TARGET) -std=c11 -ffreestanding -fno-stack-protector -fno-pic -fno-p
 ASFLAGS := $(TARGET) -Iinclude -MMD -MP
 LDFLAGS := -nostdlib -static -z max-page-size=4096 -T link.ld
 
-C_SRCS := $(wildcard kernel/*.c drivers/*.c arch/$(ARCH)/*.c)
+C_SRCS := $(wildcard kernel/*.c mm/*.c lib/*.c drivers/*.c arch/$(ARCH)/*.c)
 ifneq ($(SELFTEST),)
 CFLAGS += -DANVIL_SELFTEST -DANVIL_SELFTEST_$(SELFTEST) -Itests/kernel
 C_SRCS += tests/kernel/selftest.c
@@ -137,7 +137,7 @@ HOST_CC := cc
 HOST_CFLAGS := -std=c11 -g -O1 -Wall -Wextra -Werror -Wshadow -Wconversion -Wsign-conversion \
                -Wstrict-prototypes -Wmissing-prototypes -Wvla -Iinclude \
                -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
-HOST_TESTS := $(BUILD)/host/format_test $(BUILD)/host/fdt_test
+HOST_TESTS := $(BUILD)/host/format_test $(BUILD)/host/fdt_test $(BUILD)/host/bitmap_test
 
 $(BUILD)/host/format_test: tests/format_test.c kernel/format.c include/anvil/format.h
 	@mkdir -p $(dir $@)
@@ -146,6 +146,10 @@ $(BUILD)/host/format_test: tests/format_test.c kernel/format.c include/anvil/for
 $(BUILD)/host/fdt_test: tests/fdt_test.c kernel/fdt.c include/anvil/fdt.h include/anvil/kerr.h
 	@mkdir -p $(dir $@)
 	$(HOST_CC) $(HOST_CFLAGS) tests/fdt_test.c kernel/fdt.c -o $@
+
+$(BUILD)/host/bitmap_test: tests/bitmap_test.c lib/bitmap.c include/anvil/bitmap.h
+	@mkdir -p $(dir $@)
+	$(HOST_CC) $(HOST_CFLAGS) tests/bitmap_test.c lib/bitmap.c -o $@
 
 # QEMU's own device tree, to test the parser on the real thing.
 $(BUILD)/host/virt.dtb:
@@ -157,6 +161,7 @@ test: $(HOST_TESTS) $(BUILD)/host/virt.dtb
 	@$(CHECK_TIMEOUT) $(BUILD)/host/format_test
 	@$(CHECK_TIMEOUT) $(BUILD)/host/fdt_test $(BUILD)/host/virt.dtb || \
 	    { echo "fdt_test failed or timed out"; exit 1; }
+	@$(CHECK_TIMEOUT) $(BUILD)/host/bitmap_test
 
 format:
 	$(CLANG_FORMAT) -i $(C_SRCS) $(wildcard tests/*.c tests/kernel/*.c tests/kernel/*.h include/*/*.h arch/$(ARCH)/*.h)
