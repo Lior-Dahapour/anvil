@@ -1,3 +1,4 @@
+/* AI GENERATED TEST */
 /* Host unit tests for the bitmap helpers (`make test`, ASan + UBSan). */
 #include <anvil/bitmap.h>
 #include <anvil/panic.h>

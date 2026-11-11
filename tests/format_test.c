@@ -1,3 +1,4 @@
+/* AI GENERATED TEST */
 /* Host unit tests for kformat() (`make test`, ASan + UBSan). */
 #include <anvil/format.h>
 #include <limits.h>

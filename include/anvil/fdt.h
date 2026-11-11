@@ -20,6 +20,19 @@
 KMUST_CHECK kerr_t fdt_check_header(const uint8_t *blob, size_t len);
 
 /**
+ * Size of the whole tree in bytes (the header's totalsize), for reserving its memory.
+ *
+ * @param blob  Start of the tree. Must not be NULL. Not modified.
+ * @param len   Bytes the caller can safely read at `blob`.
+ * @param size  Out: totalsize, at most `len`. Must not be NULL. Written only on success.
+ *
+ * @return KERR_OK, or KERR_INVALID if fdt_check_header rejects the tree.
+ *
+ * Context: any.
+ */
+KMUST_CHECK kerr_t fdt_total_size(const uint8_t *blob, size_t len, uint32_t *size);
+
+/**
  * Find RAM: the first range of the /memory node's `reg`.
  *
  * @param blob  Start of the tree. Must not be NULL. Not modified.

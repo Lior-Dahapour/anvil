@@ -11,6 +11,7 @@ KERNEL_STACK_SIZE = 16K;
 SECTIONS
 {
     . = KERNEL_BASE;
+    __image_start = .;
 
     /* .text.boot first, so the image starts with _start. */
     .text : {

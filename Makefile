@@ -144,7 +144,8 @@ $(BUILD)/host/format_test: tests/format_test.c kernel/format.c include/anvil/for
 	@mkdir -p $(dir $@)
 	$(HOST_CC) $(HOST_CFLAGS) tests/format_test.c kernel/format.c -o $@
 
-$(BUILD)/host/fdt_test: tests/fdt_test.c kernel/fdt.c include/anvil/fdt.h include/anvil/kerr.h
+$(BUILD)/host/fdt_test: tests/fdt_test.c kernel/fdt.c include/anvil/fdt.h include/anvil/kerr.h \
+    include/anvil/panic.h
 	@mkdir -p $(dir $@)
 	$(HOST_CC) $(HOST_CFLAGS) tests/fdt_test.c kernel/fdt.c -o $@
 

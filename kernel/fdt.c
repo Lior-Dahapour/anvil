@@ -1,4 +1,5 @@
 #include <anvil/fdt.h>
+#include <anvil/panic.h>
 #include <stdbool.h>
 
 /* Devicetree Specification v0.4, 5.2 (Header). */
@@ -138,7 +139,16 @@ static KMUST_CHECK kerr_t read_cells(const uint8_t *blob, uint32_t totalsize, ui
     }
     return KERR_OK;
 }
-
+KMUST_CHECK kerr_t fdt_total_size(const uint8_t *blob, const size_t len, uint32_t *size)
+{
+    KASSERT(size != NULL);
+    if (fdt_check_header(blob, len) != KERR_OK) {
+        return KERR_INVALID;
+    }
+    // SAFETY: header fields, in bounds after fdt_check_header.
+    *size = read_be32_unchecked(blob + 4);
+    return KERR_OK;
+}
 kerr_t fdt_find_memory(const uint8_t *blob, const size_t len, phys_addr_t *base, uint64_t *size)
 {
     if (fdt_check_header(blob, len) != KERR_OK) {

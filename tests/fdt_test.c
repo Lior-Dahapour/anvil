@@ -1,5 +1,8 @@
+/* AI GENERATED TEST */
 /* Host unit tests for the device tree parser (`make test`, ASan + UBSan). */
 #include <anvil/fdt.h>
+#include <anvil/panic.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +12,18 @@
 #define TREE_SIZE 64U
 
 static int failures;
+
+/* KASSERT calls this. A failed assertion is a bug in the code under test: stop loudly. */
+_Noreturn void kpanic(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    printf("FAIL  kpanic: ");
+    vprintf(fmt, args);
+    printf("\n");
+    va_end(args);
+    exit(1);
+}
 
 /* Device trees store every number big-endian. */
 static void put_be32(uint8_t *bytes, size_t offset, uint32_t value)
@@ -121,13 +136,41 @@ static void check_file(const char *path, uint64_t expected_base, uint64_t expect
 
     phys_addr_t base = {.value = 0};
     uint64_t ram_size = 0;
+    uint32_t total = 0;
     kerr_t result = fdt_find_memory(blob, size, &base, &ram_size);
+    kerr_t total_result = fdt_total_size(blob, size, &total);
     free(blob);
+
+    /* QEMU pads its tree to exactly 1 MiB. */
+    if (total_result != KERR_OK || total != 1U << 20) {
+        printf("FAIL  %s: expected total size 0x100000, got %d, 0x%x\n", path, total_result, total);
+        failures++;
+    }
 
     if (result != KERR_OK || base.value != expected_base || ram_size != expected_size) {
         printf("FAIL  %s: expected RAM 0x%llx size 0x%llx, got %d, 0x%llx size 0x%llx\n", path,
                (unsigned long long)expected_base, (unsigned long long)expected_size, result,
                (unsigned long long)base.value, (unsigned long long)ram_size);
+        failures++;
+    }
+}
+
+/* fdt_total_size on a tree whose totalsize is `totalsize`, in a `len`-byte buffer. */
+static void check_total_size(const char *name, uint32_t magic, uint32_t totalsize, size_t len,
+                             kerr_t expected)
+{
+    uint8_t tree[TREE_SIZE] = {0};
+    put_be32(tree, 0, magic);
+    put_be32(tree, 4, totalsize);
+    put_be32(tree, 8, HEADER_SIZE);
+
+    uint32_t size = 0x1234U;
+    kerr_t result = fdt_total_size(tree, len, &size);
+    uint32_t want = expected == KERR_OK ? totalsize : 0x1234U;
+
+    if (result != expected || size != want) {
+        printf("FAIL  %s: expected %d size 0x%x, got %d size 0x%x\n", name, expected, want, result,
+               size);
         failures++;
     }
 }
@@ -238,6 +281,12 @@ int main(int argc, char **argv)
     check_strings("strings start past the end", TREE_SIZE + 1U, 0, KERR_INVALID);
     /* Relies on the `||` order: totalsize - offset would wrap. */
     check_strings("huge offset, huge size", 0xfffffff0U, 0xfffffff0U, KERR_INVALID);
+
+    /* totalsize, not len: the tree can be smaller than the buffer. Untouched on failure. */
+    check_total_size("total size fills len", MAGIC, TREE_SIZE, TREE_SIZE, KERR_OK);
+    check_total_size("total size below len", MAGIC, HEADER_SIZE + 4U, TREE_SIZE, KERR_OK);
+    check_total_size("total size, bad magic", MAGIC + 1U, TREE_SIZE, TREE_SIZE, KERR_INVALID);
+    check_total_size("total size past len", MAGIC, TREE_SIZE + 1U, TREE_SIZE, KERR_INVALID);
 
     /* Token walk. No memory node, so a valid walk gives NOT_FOUND. */
     check_tokens("only END", (const uint32_t[]){9}, 1, KERR_NOT_FOUND);

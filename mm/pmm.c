@@ -6,7 +6,6 @@
 #include <anvil/panic.h>
 #include <anvil/pmm.h>
 #include <anvil/types.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -66,21 +65,63 @@ KMUST_CHECK kerr_t pmm_init(const phys_addr_t ram_base, const uint64_t ram_size,
 
 KMUST_CHECK kerr_t pmm_reserve(const phys_addr_t base, const uint64_t size)
 {
-    (void)base;
-    (void)size;
-    return KERR_INVALID;
+    if (size == 0) {
+        return KERR_INVALID;
+    }
+    uint64_t end = 0;
+    if (__builtin_add_overflow(base.value, size, &end)) {
+        return KERR_INVALID;
+    }
+    // end need to be inside the ram range , while also making sure, the 'base' is in the ram
+    if (!(base.value >= pmm.ram_base && end <= pmm.ram_base + pmm.frame_count * PMM_FRAME_SIZE)) {
+        return KERR_INVALID;
+    }
+    const size_t start_frame = (base.value - pmm.ram_base) / PMM_FRAME_SIZE; // round down
+    const size_t end_frame = (end - pmm.ram_base + PMM_FRAME_SIZE - 1) / PMM_FRAME_SIZE; // round up
+    for (size_t i = start_frame; i < end_frame; i++) {
+        if (bitmap_test(&pmm.frames, i)) {
+            continue;
+        }
+        bitmap_set(&pmm.frames, i);
+        pmm.free_count--;
+    }
+    return KERR_OK;
 }
 
 KMUST_CHECK kerr_t pmm_alloc_frame(phys_addr_t *frame)
 {
-    (void)frame;
-    return KERR_NOMEM;
+    KASSERT(frame != NULL);
+    size_t bit = 0;
+    if (bitmap_find_zero(&pmm.frames, &bit) != KERR_OK) {
+        return KERR_NOMEM;
+    }
+    bitmap_set(&pmm.frames, bit);
+    pmm.free_count--;
+    // SAFETY: frame non-null (KASSERT), caller passes a valid out pointer.
+    frame->value = pmm.ram_base + bit * PMM_FRAME_SIZE;
+    return KERR_OK;
 }
 
 KMUST_CHECK kerr_t pmm_free_frame(const phys_addr_t frame)
 {
-    (void)frame;
-    return KERR_INVALID;
+    if (pmm.ram_base > frame.value) {
+        return KERR_INVALID;
+    }
+    if ((frame.value & (PMM_FRAME_SIZE - 1)) != 0) {
+        // frame isn't aligned
+        return KERR_INVALID;
+    }
+    size_t nframe = (frame.value - pmm.ram_base) / PMM_FRAME_SIZE;
+    if (nframe >= pmm.frame_count) {
+        return KERR_INVALID;
+    }
+    if (!bitmap_test(&pmm.frames, nframe)) {
+        // already free
+        return KERR_INVALID;
+    }
+    bitmap_clear(&pmm.frames, nframe);
+    pmm.free_count++;
+    return KERR_OK;
 }
 
 size_t pmm_free_count(void)

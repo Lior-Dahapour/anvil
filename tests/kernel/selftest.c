@@ -1,3 +1,4 @@
+/* AI GENERATED TEST */
 /*
  * In-kernel crash tests, built only with `make SELFTEST=NAME`. `make check` boots each one and
  * checks the output. Fault tests label the faulting instruction `selftest_fault`, and the dump's

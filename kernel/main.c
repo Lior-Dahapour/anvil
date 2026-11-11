@@ -16,7 +16,8 @@
 
 /* Linux Documentation/arch/arm64/booting.rst, section 2: the DTB is at most 2 MiB. */
 #define DTB_MAX_SIZE (2U * 1024U * 1024U)
-
+extern char __image_start[];
+extern char __image_end[];
 _Noreturn void kmain(void)
 {
     /* MMU off: virtual = physical. */
@@ -45,6 +46,12 @@ _Noreturn void kmain(void)
     }
     kprintf("RAM: 0x%lx - 0x%lx (%lu MiB)\n", ram_base.value, ram_base.value + ram_size,
             ram_size / (1024U * 1024U));
+    uint32_t dtb_size = 0;
+    if (fdt_total_size(blob, DTB_MAX_SIZE, &dtb_size) != KERR_OK) {
+        kpanic("failed to determine the DTB size");
+    }
+    kprintf("Kernel: 0x%lx - 0x%lx\n", (uintptr_t)__image_start, (uintptr_t)__image_end);
+    kprintf("DTB: 0x%lx (%u MiB)\n", (uintptr_t)dtb.value, dtb_size / (1024U * 1024U));
 
     arch_poweroff();
 }
